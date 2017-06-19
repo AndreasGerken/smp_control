@@ -3,6 +3,8 @@ import numpy as np
 from std_msgs.msg import Float32MultiArray
 from sensor_msgs.msg import Imu
 
+from robot_configs.puppy_configs.main_config import PuppyConfig
+
 def get_class():
     return PuppyConfigFindResonance
 

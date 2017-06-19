@@ -280,6 +280,9 @@ class SMP_control(smp_thread_ros):
         self.pickler.save_pickle(self.pickleName)
         self.isrunning = False
 
+        if hasattr(self.robot.__class__, 'before_exit') and callable(getattr(self.robot.__class__, 'before_exit')):
+            self.robot.before_exit()
+
         # generates problem with batch mode
         rospy.signal_shutdown("ending")
         print("ending")
