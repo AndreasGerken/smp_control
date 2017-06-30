@@ -7,6 +7,8 @@ from matplotlib import cm
 from sklearn import datasets, linear_model
 from sklearn import kernel_ridge
 from sklearn.mixture import GaussianMixture as GMM
+from sklearn.neural_network import MLPRegressor
+
 
 
 pickleFolder = '../pickles_new_body/'
@@ -45,14 +47,14 @@ class Analyzer():
 
         #if self.variableDict["dataversion"] >= 9:
         #    self.hz = self.variableDict["hz"]
-        #self.nummot = self.variableDict["nummot"]
         self.motorCommands = self.variableDict["y"]
         self.sensorValues = self.variableDict["x"]
-        self.timesteps = len(self.motorCommands)
+        self.timesteps = self.motorCommands.shape[0]
+        self.nummot = self.motorCommands.shape[1]
 
-        #self.windowsize = self.args.windowsize
+        self.windowsize = self.args.windowsize
         self.embsize = self.args.embsize
-        #self.hamming = self.args.hamming
+        self.hamming = self.args.hamming
 
     def all_files(self,directory):
         for path, dirs, files in os.walk(directory):
@@ -69,7 +71,7 @@ class Analyzer():
     def correlation_func(self):
         loopsteps = self.timesteps - self.windowsize
 
-        self.motorCommands += np.random.normal(size=self.motorCommands.shape) * 0.1
+        #self.motorCommands += np.random.normal(size=self.motorCommands.shape) * 0.1
 
         # testdata
         # self.motorCommands = np.arange(20).reshape(10,2)
@@ -234,6 +236,84 @@ class Analyzer():
 
         return 0
 
+    def learn_motor_sensor_mlp_cross(self):
+        fig = plt.figure()
+        for lag in range(1,6):
+
+            mot_lag = self.motorCommands[0:-1 * lag]
+            sen_lag = self.sensorValues[lag:]
+            n = mot_lag.shape[0]
+            nummot = mot_lag.shape[1]
+            numsen = sen_lag.shape[1]
+            split = int(np.floor(n / 5.))
+
+            print split
+            print mot_lag.shape
+            print sen_lag.shape
+
+
+
+            sen_pred = np.zeros((0,numsen))
+
+            for i in range(5):
+                regr = MLPRegressor(solver='lbfgs', alpha=1e-4, hidden_layer_sizes=(10, 1), random_state=1)
+                start = i * split
+                end = (i + 1)  * split
+
+                mot_train = np.concatenate((mot_lag[0:start], mot_lag[end:]))
+                mot_test = mot_lag[start:end]
+
+                sen_train = np.concatenate((sen_lag[0:start], sen_lag[end:]))
+                sen_test = sen_lag[start:end]
+
+                regr.fit(mot_train, sen_train)
+                sen_pred = np.vstack((sen_pred, regr.predict(mot_test)))
+
+
+            for i in range(numsen):
+                ax = fig.add_subplot(numsen, 5, (i * 5) + lag)
+                plt.plot(sen_lag[:,i], c = 'k')
+                plt.plot(sen_pred[:,i], c='r', alpha=0.7)
+        plt.show()
+
+    def learn_motor_sensor_linear_cross(self):
+        fig = plt.figure()
+        for lag in range(1,6):
+
+            mot_lag = self.motorCommands[0:-1 * lag]
+            sen_lag = self.sensorValues[lag:]
+            n = mot_lag.shape[0]
+            nummot = mot_lag.shape[1]
+            numsen = sen_lag.shape[1]
+            split = int(np.floor(n / 5.))
+
+            print split
+            print mot_lag.shape
+            print sen_lag.shape
+
+            regr = linear_model.Ridge(alpha = lag)
+
+            sen_pred = np.zeros((0,numsen))
+
+            for i in range(5):
+                start = i * split
+                end = (i + 1)  * split
+
+                mot_train = np.concatenate((mot_lag[0:start], mot_lag[end:]))
+                mot_test = mot_lag[start:end]
+
+                sen_train = np.concatenate((sen_lag[0:start], sen_lag[end:]))
+                sen_test = sen_lag[start:end]
+
+                regr.fit(mot_train, sen_train)
+                sen_pred = np.vstack((sen_pred, regr.predict(mot_test)))
+
+
+            for i in range(numsen):
+                ax = fig.add_subplot(numsen, 5, (i * 5) + lag)
+                plt.plot(sen_lag[:,i], c = 'k')
+                plt.plot(sen_pred[:,i], c='r', alpha=0.7)
+        plt.show()
 
     def learn_motor_sensor_linear(self):
         """
@@ -540,7 +620,84 @@ class Analyzer():
         ani = animation.FuncAnimation(fig, updatefig, interval=50, blit=True)
         plt.show()
 
+    def time_series(self):
+        x = self.variableDict["x"]
+        y = self.variableDict["y"]
+        sensors = 3
+        fig = plt.figure()
+        for i in range(sensors):
+            fig.add_subplot(sensors, 1, i+1)
+            plt.plot(x[:,i::sensors])
+
+        plt.show()
+
+    def split_sensors_effects_smooth(self):
+        # TODO: not functional
+        # C=self.variableDict["C"]
+        # x=self.variableDict["x"]
+        # h=self.variableDict["h"]
+        # sensors=3
+        # yp = np.zeros((x.shape[0],sensors + 1))
+        #
+        # print C.shape
+        # print x.shape
+        # print h.shape
+        #
+        #
+        # for j in range(sensors):
+        #     Cp = C[:,0,j::sensors]
+        #     hp = h[:,:]
+        #     xp = x[:,j::sensors]
+        #
+        #     for i in range(x.shape[0]):
+        #         yp[i,j] = np.dot(Cp[i], xp[i].T) + hp[i]
+        #         if(i>0):
+        #             yp[i,j] = yp[i,j] * 0.2 + yp[i-1,j] * 0.8
+        #
+        # yp[:,3] = yp[:,0] + yp[:,1] + yp[:,2]
+        #
+        # plt.plot(yp)
+        # plt.show()
+        return
+
+    def model_matrix_plot_smooth(self):
+        C = self.variableDict["C"]
+        A = self.variableDict["A"]
+        sensors = 3
+
+        fig = plt.figure()
+        ax = None
+        for j in range(sensors):
+            abs_max = np.std(self.variableDict["x"][:,j+sensors*2])
+            #abs_max = np.max(np.abs(self.variableDict["x"][:,j+sensors*2]))
+            ax = fig.add_subplot(1,sensors,j+1, sharey=ax)
+            plt.plot(C[:,0,j::sensors]*abs_max)
+            #plt.legend()
+        #plt.subplot(122)
+        #for i in range(A.shape[1]):
+        #    for j in range(A.shape[2]):
+        #        plt.plot(A[:,i,j], label="A "+ str(i) + " " + str(j))
+        #plt.legend()
+        plt.show()
+
+
     def model_matrix_plot(self):
+        C = self.variableDict["C"]
+        A = self.variableDict["A"]
+
+        plt.subplot(121)
+        for i in range(C.shape[1]):
+            for j in range(C.shape[2]):
+                plt.plot(C[:,i,j], label="C "+ str(i) + " " + str(j))
+        plt.legend()
+        plt.subplot(122)
+        for i in range(A.shape[1]):
+            for j in range(A.shape[2]):
+                plt.plot(A[:,i,j], label="A "+ str(i) + " " + str(j))
+        plt.legend()
+        plt.show()
+
+    def model_matrix_animate(self):
         global A, C, b, h, i
         import matplotlib.animation as animation
         fig = plt.figure(self.filename)
@@ -552,11 +709,11 @@ class Analyzer():
         print C.shape
         i = 0
         plt.subplot(121)
-        im = plt.imshow(A[0,:,:], interpolation='none', animated=True)
+        im = plt.imshow(A[0,:,:], interpolation='none', animated=True, vmin = np.min(A), vmax = np.max(A))
         plt.title('A')
 
         plt.subplot(122)
-        im2 = plt.imshow(C[0,:,:].T, interpolation='none', animated = True)
+        im2 = plt.imshow(C[0,:,:].T, interpolation='none', animated = True, vmin = np.min(C), vmax = np.max(C))
         plt.title('C')
 
         print A[self.timesteps-1,:,:]
@@ -585,18 +742,24 @@ class Analyzer():
             return im, im2,
 
         # interval 42 results in about 50s for 1000 timesteps on my computer -> nearly realtime
-        ani = animation.FuncAnimation(fig, updatefig, interval=42, blit=True)
+        ani = animation.FuncAnimation(fig, updatefig, interval=10, blit=True)
         plt.show()
 
 if __name__ == "__main__":
     function_dict = {
+    'ts': Analyzer.time_series,
+    'split_sensors': Analyzer.split_sensors_effects_smooth,
     'cor': Analyzer.correlation_func,
     'scat':Analyzer.scattermatrix_func,
     'anim_scat':Analyzer.animate_scatter,
     'spect':Analyzer.spectogram_func,
     'lin': Analyzer.learn_motor_sensor_linear,
+    'lin_cross': Analyzer.learn_motor_sensor_linear_cross,
+    'mlp_cross': Analyzer.learn_motor_sensor_mlp_cross,
     'gmm': Analyzer.learn_motor_sensor_gmm,
-    'model_matrix': Analyzer.model_matrix_plot,
+    'model_matrix_plot': Analyzer.model_matrix_plot,
+    'model_matrix_animate': Analyzer.model_matrix_animate,
+    'model_matrix_plot_smooth': Analyzer.model_matrix_plot_smooth,
     'find_emb': Analyzer.find_best_embsize,
     'activity': Analyzer.activity_plot2
     }
