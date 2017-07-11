@@ -5,7 +5,8 @@ import argparse
 import numpy as np
 import signal
 import imp
-import sys, time
+import sys
+import time
 
 # ros imports
 import rospy
@@ -17,14 +18,19 @@ from pickler import Pickler
 
 ################################################################################
 # helper funcs
+
+
 def dtanh(x):
     return 1 - np.tanh(x)**2
 
 # TODO: if zero?
+
+
 def idtanh(x):
-    return 1./(dtanh(x) + 0.0001)
+    return 1. / (dtanh(x) + 0.0001)
 
 ################################################################################
+
 
 class SMP_control(smp_thread_ros):
 
@@ -44,9 +50,9 @@ class SMP_control(smp_thread_ros):
         self.epsA = args.epsA
 
         pub_names = {
-            '/lpzros/xsi': [Float32MultiArray,],
-            '/lpzros/EE': [Float32,],
-            }
+            '/lpzros/xsi': [Float32MultiArray, ],
+            '/lpzros/EE': [Float32, ],
+        }
         sub_names = {}
 
         pub_names.update(self.robot.pub_names)
@@ -56,7 +62,8 @@ class SMP_control(smp_thread_ros):
         self.lag = self.robot.lag
         self.embedding = self.robot.embedding
 
-        smp_thread_ros.__init__(self, loop_time = self.loop_time, pubs = pub_names, subs = sub_names)
+        smp_thread_ros.__init__(
+            self, loop_time=self.loop_time, pubs=pub_names, subs=sub_names)
 
         self.robot.smp_control = self
 
@@ -75,37 +82,42 @@ class SMP_control(smp_thread_ros):
 
         # Model
         if self.robot.use_sensors_for_model:
-            self.A  = np.random.uniform(-1e-4, 1e-4, (self.numsen, self.nummot_embedding + self.numsen))
+            self.A = np.random.uniform(-1e-4, 1e-4,
+                                       (self.numsen, self.nummot_embedding + self.numsen))
         else:
-            self.A  = np.random.uniform(-1e-4, 1e-4, (self.numsen, self.nummot_embedding))
-        self.b = np.zeros((self.numsen,1))
+            self.A = np.random.uniform(-1e-4, 1e-4,
+                                       (self.numsen, self.nummot_embedding))
+        self.b = np.zeros((self.numsen, 1))
 
         self.EE = 0.
 
         # Controller
-        self.C  = np.random.uniform(-1e-4, 1e-4, (self.nummot, self.numsen_embedding))
-        self.h  = np.zeros((self.nummot,1))
+        self.C = np.random.uniform(-1e-4, 1e-4,
+                                   (self.nummot, self.numsen_embedding))
+        self.h = np.zeros((self.nummot, 1))
 
-        self.g  = np.tanh # sigmoidal activation function
-        self.g_ = dtanh # derivative of sigmoidal activation function
+        self.g = np.tanh  # sigmoidal activation function
+        self.g_ = dtanh  # derivative of sigmoidal activation function
 
-        self.L     = np.zeros((self.numsen_embedding, self.nummot))
+        self.L = np.zeros((self.numsen_embedding, self.nummot))
         self.v_avg = np.zeros((self.numsen_embedding, 1))
-        self.xsi   = np.zeros((self.numsen_embedding, 1))
+        self.xsi = np.zeros((self.numsen_embedding, 1))
 
         self.xsiAvg = 0
         self.xsiAvgSmooth = 0.01
 
         self.pickler = Pickler(self, self.numtimesteps)
-        self.pickler.addOnceVariables(['x', 'y', 'epsC', 'epsA', 'nummot','numsen','lag','embedding',''])
-        self.pickler.addFrequentVariables(['A','b','C','h','xsi','EE'])
+        self.pickler.addOnceVariables(
+            ['x', 'y', 'epsC', 'epsA', 'nummot', 'numsen', 'lag', 'embedding', ''])
+        self.pickler.addFrequentVariables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
         self.pickler.initializeFrequentBuffer()
         self.pickleName = 'pickles/newest.pickle'
 
-        self.msg_xsi =  Float32MultiArray()
+        self.msg_xsi = Float32MultiArray()
 
     def run(self):
-        self.pickler.addOnceVariables(['robot.use_sensors', 'robot.sensor_dimensions','robot.classname'])
+        self.pickler.addOnceVariables(
+            ['robot.use_sensors', 'robot.sensor_dimensions', 'robot.classname'])
 
         # initialize motors and wait
         print('initializing motors')
@@ -143,59 +155,64 @@ class SMP_control(smp_thread_ros):
             if inputs is None or self.cnt_main < 3:
                 return
             else:
-                raise Exception("numsen doesn't match up with the real input data dimensionality numsen: " + str(self.numsen) + ', len: ' + str(len(inputs)))
+                raise Exception("numsen doesn't match up with the real input data dimensionality numsen: " +
+                                str(self.numsen) + ', len: ' + str(len(inputs)))
 
         if self.verbose:
             print 'Inputs:\t', inputs
 
         # save the input (casting from (numsen,1) to (numsen))
-        self.x[self.cnt_main,:] = inputs
+        self.x[self.cnt_main, :] = inputs
 
     def compute_new_output(self):
         if self.cnt_main < self.embedding:
             return
-        x_fut = self.x[self.cnt_main - self.embedding: self.cnt_main, :].flatten()
-        Cx_fut = np.dot(self.C, x_fut).reshape((self.nummot,1))
+        x_fut = self.x[self.cnt_main -
+                       self.embedding: self.cnt_main, :].flatten()
+        Cx_fut = np.dot(self.C, x_fut).reshape((self.nummot, 1))
 
-        self.y[self.cnt_main, :] = self.g(Cx_fut + self.h)[:,0]
+        self.y[self.cnt_main, :] = self.g(Cx_fut + self.h)[:, 0]
         if self.verbose:
             print 'x_fut:\t', x_fut
             print 'Cx_fut\t: ', Cx_fut
             print 'new y\t', self.y[self.cnt_main, :]
 
     def check_and_send_output(self):
-        motor_output = self.y[self.cnt_main,:]
+        motor_output = self.y[self.cnt_main, :]
 
         # check output dimensionality
         if(len(motor_output) != self.nummot):
-            raise Exception("numsen doesn't match up with the real input data dimensionality numsen: " + str(self.numsen_embedding) + ', len: ' + str(len(motor_output)))
+            raise Exception("numsen doesn't match up with the real input data dimensionality numsen: " +
+                            str(self.numsen_embedding) + ', len: ' + str(len(motor_output)))
 
         if self.verbose:
             print 'Outputs: ', motor_output
 
         self.robot.send_output(motor_output)
 
-
     def learning_step(self):
         """lpz sensors callback: receive sensor values, sos algorithm attached"""
 
-        sensor_input = self.x[self.cnt_main,:]
+        sensor_input = self.x[self.cnt_main, :]
 
-        if self.cnt_main <= self.lag + self.embedding: return
+        if self.cnt_main <= self.lag + self.embedding:
+            return
 
         # TODO:why?
         #self.msg_inputs.data = self.x[:,now].flatten().tolist()
-        #self.pub["_lpzros_x"].publish(self.msg_inputs)
+        # self.pub["_lpzros_x"].publish(self.msg_inputs)
 
         # local variables
         # results in lagged (nummot, 1) vector
-        x_lag = np.atleast_2d(self.x[self.cnt_main - self.lag - self.embedding:self.cnt_main - self.lag, :].flatten()).T
+        x_lag = np.atleast_2d(
+            self.x[self.cnt_main - self.lag - self.embedding:self.cnt_main - self.lag, :].flatten()).T
 
         # results in (nummot,1) vector
         x_fut = np.atleast_2d(self.x[self.cnt_main, :].flatten()).T
 
         # results in lagged (numsen,1) vector
-        y_lag = np.atleast_2d(self.y[self.cnt_main - self.lag - self.embedding: self.cnt_main - self.lag, :].flatten()).T
+        y_lag = np.atleast_2d(
+            self.y[self.cnt_main - self.lag - self.embedding: self.cnt_main - self.lag, :].flatten()).T
 
         # TODO: THIS IS NOT WORKING!!!!
         if self.robot.use_sensors_for_model:
@@ -204,16 +221,18 @@ class SMP_control(smp_thread_ros):
 
         z = np.dot(self.C, x_lag + self.v_avg * self.creativity) + self.h
 
-        g_prime = dtanh(z) # derivative of g
-        g_prime_inv = idtanh(z) # inverse derivative of g
+        g_prime = dtanh(z)  # derivative of g
+        g_prime_inv = idtanh(z)  # inverse derivative of g
 
         # cut of embedding
-        g_prime_inv = g_prime_inv[:self.nummot,:]
+        g_prime_inv = g_prime_inv[:self.nummot, :]
 
         # forward prediction error xsi
         # clipping prevents overflow in unstable episodes
-        self.xsi = np.clip(x_fut - (np.dot(self.A, y_lag) + self.b), -1e+38, 1e+38)
-        self.xsiAvg = np.sum(np.abs(self.xsi)) * self.xsiAvgSmooth + (1 - self.xsiAvgSmooth) * self.xsiAvg
+        self.xsi = np.clip(
+            x_fut - (np.dot(self.A, y_lag) + self.b), -1e+38, 1e+38)
+        self.xsiAvg = np.sum(np.abs(self.xsi)) * self.xsiAvgSmooth + \
+            (1 - self.xsiAvgSmooth) * self.xsiAvg
 
         self.msg_xsi.data = self.xsi.flatten().tolist()
         self.pub['_lpzros_xsi'].publish(self.msg_xsi)
@@ -225,19 +244,18 @@ class SMP_control(smp_thread_ros):
             print 'g_prime_inv\t', g_prime_inv
             print "Xsi Average %f\t" % self.xsiAvg
 
-
         """
         forward model learning
         """
         # cooling of the modelmatrix
         self.A += self.epsA * np.dot(self.xsi, y_lag.T) + (self.A * -0.0003)
-        self.b += self.epsA * self.xsi              + (self.b * -0.0001)
+        self.b += self.epsA * self.xsi + (self.b * -0.0001)
 
         """
         controller learning
         """
 
-        if self.mode == 0: # homestastic learning
+        if self.mode == 0:  # homestastic learning
             eta = np.dot(self.A.T, self.xsi)
 
             dC = np.dot(eta * g_prime, x_lag.T) * self.epsC
@@ -247,20 +265,22 @@ class SMP_control(smp_thread_ros):
                 print dC, dh
                 print 'eta', eta.shape, eta
 
-        elif self.mode == 1: # TLE / homekinesis
+        elif self.mode == 1:  # TLE / homekinesis
             # TODO: why is this different to eta in homeostasis?
             eta = np.dot(np.linalg.pinv(self.A), self.xsi)
 
             # cut of embedding
-            eta = eta[:self.nummot,:]
+            eta = eta[:self.nummot, :]
 
             # TODO: Why Clip?
             # after M inverse
             # zeta = eta * g_prime_inv
             zeta = np.clip(eta * g_prime_inv, -1., 1.)
 
-            lambda_ = np.eye(self.nummot) * np.random.uniform(-0.01, 0.01, self.nummot)
-            mue = np.dot(np.linalg.pinv(np.dot(self.C, self.C.T) + lambda_), zeta)
+            lambda_ = np.eye(self.nummot) * \
+                np.random.uniform(-0.01, 0.01, self.nummot)
+            mue = np.dot(np.linalg.pinv(
+                np.dot(self.C, self.C.T) + lambda_), zeta)
 
             # TODO: why?
             # after C inverse
@@ -273,12 +293,13 @@ class SMP_control(smp_thread_ros):
             self.EE = .1 / (np.square(np.linalg.norm(v)) + 0.001)
 
             # Includes cooling of the control matrix
-            dC = (np.dot(mue, v.T) + (np.dot((mue * y_lag[:self.nummot] * zeta), -2 * x_lag.T))) * self.EE * self.epsC + (self.C * -0.0003)
-            dh = mue * y_lag[:self.nummot] * zeta * -2 * self.EE * self.epsC + (self.h * -0.0001)
+            dC = (np.dot(mue, v.T) + (np.dot((mue *
+                                              y_lag[:self.nummot] * zeta), -2 * x_lag.T))) * self.EE * self.epsC + (self.C * -0.0003)
+            dh = mue * y_lag[:self.nummot] * zeta * -2 * \
+                self.EE * self.epsC + (self.h * -0.0001)
 
             # publishing for homeokinesis
             self.pub['_lpzros_EE'].publish(self.EE)
-
 
             if self.verbose:
                 print 'v', v
@@ -335,24 +356,32 @@ def dynamic_importer(name):
 
     return package, myclass
 
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='TODO')
     parser.add_argument('file')
-    parser.add_argument('-m', '--mode', type=str, help='select mode [hs] from ' + str(SMP_control.modes), default = 'hk')
-    parser.add_argument('-n', '--numtimesteps', type=int, help='Episode length in timesteps, standard 1000', default= 1000)
-    parser.add_argument('-lt', '--loop_time', type=float, help='delay betwself.EEn timesteps in the loop', default = 0.05)
-    parser.add_argument('-eC', '--epsC', type=float, help='learning rate for controller', default = 0.1)
-    parser.add_argument('-eA', '--epsA', type=float, help='learning rate for model', default = 0.01)
-    parser.add_argument('-c', '--creativity', type=float, help='creativity', default = 0.5)
-    parser.add_argument('-v', '--verbose', type=bool, help='print many motor and sensor commands', default=False)
+    parser.add_argument('-m', '--mode', type=str,
+                        help='select mode [hs] from ' + str(SMP_control.modes), default='hk')
+    parser.add_argument('-n', '--numtimesteps', type=int,
+                        help='Episode length in timesteps, standard 1000', default=1000)
+    parser.add_argument('-lt', '--loop_time', type=float,
+                        help='delay betwself.EEn timesteps in the loop', default=0.05)
+    parser.add_argument('-eC', '--epsC', type=float,
+                        help='learning rate for controller', default=0.1)
+    parser.add_argument('-eA', '--epsA', type=float,
+                        help='learning rate for model', default=0.01)
+    parser.add_argument('-c', '--creativity', type=float,
+                        help='creativity', default=0.5)
+    parser.add_argument('-v', '--verbose', type=bool,
+                        help='print many motor and sensor commands', default=False)
     args = parser.parse_args()
 
     class_name = args.file.split('.py')[0]
     robot_file, robot_class = dynamic_importer(class_name)
     robot = robot_class(args)
 
-    smp_control = SMP_control(args,robot)
+    smp_control = SMP_control(args, robot)
 
     def handler(signum, frame):
         print 'Signal handler called with signal', signum
