@@ -21,23 +21,25 @@ from pickler import Pickler
 
 
 def dtanh(x):
+    """ this is the derivative of the tanh function """
     return 1 - np.tanh(x)**2
 
-# TODO: if zero?
-
-
 def idtanh(x):
-    return 1. / (dtanh(x) + 0.0001)
+    """ this is the inverse of the tanh function, with a protection against
+    zero division zero """
+    return 1. / (dtanh(x) + 0.00001)
 
 ################################################################################
 
 
 class SMP_control(smp_thread_ros):
+    """ This class provides the main functionality of running the algorithms
+    homeostasis and homeokinesis on a ros enabled robot.
+    """
 
     modes = {'hs': 0, 'hk': 1}
 
     def __init__(self, args, robot_config):
-
         # save arguments
         self.mode = SMP_control.modes[args.mode]
         self.numtimesteps = args.numtimesteps
@@ -116,6 +118,9 @@ class SMP_control(smp_thread_ros):
         self.msg_xsi = Float32MultiArray()
 
     def run(self):
+        """ Main loop of the algorithms, runs until the maximum timesteps are
+        reached or the loop is canceled.
+        """
         self.pickler.addOnceVariables(
             ['robot.use_sensors', 'robot.sensor_dimensions', 'robot.classname'])
 
@@ -147,6 +152,9 @@ class SMP_control(smp_thread_ros):
             self.rate.sleep()
 
     def get_and_check_input(self):
+        """ Gathers the input from the robot and checks if the dimensionality
+        is correct, then it saves the new input to the x matrix.
+        """
         inputs = self.robot.get_input()
 
         # check input dimensionality
@@ -165,6 +173,9 @@ class SMP_control(smp_thread_ros):
         self.x[self.cnt_main, :] = inputs
 
     def compute_new_output(self):
+        """ Computes a new output from the sensor readings and the controller
+        variables. This output is saved to the y matrix.
+        """
         if self.cnt_main < self.embedding:
             return
         x_fut = self.x[self.cnt_main -
@@ -178,6 +189,9 @@ class SMP_control(smp_thread_ros):
             print 'new y\t', self.y[self.cnt_main, :]
 
     def check_and_send_output(self):
+        """ Gets the output from the y matrix, checks the dimensionality and
+        commands the robot class to send the output.
+        """
         motor_output = self.y[self.cnt_main, :]
 
         # check output dimensionality
@@ -191,7 +205,7 @@ class SMP_control(smp_thread_ros):
         self.robot.send_output(motor_output)
 
     def learning_step(self):
-        """lpz sensors callback: receive sensor values, sos algorithm attached"""
+        """ One learning step of the learning algorithm (homeostasis or homeokinesis)"""
 
         sensor_input = self.x[self.cnt_main, :]
 
@@ -315,6 +329,7 @@ class SMP_control(smp_thread_ros):
             print 'A:\n', self.A
 
     def exit_loop(self):
+        """ Ends the loop and saves the data to a pickle file """
         self.pickler.save_pickle(self.pickleName)
         self.isrunning = False
 
@@ -377,6 +392,7 @@ if __name__ == '__main__':
                         help='print many motor and sensor commands', default=False)
     args = parser.parse_args()
 
+    # import the robot class
     class_name = args.file.split('.py')[0]
     robot_file, robot_class = dynamic_importer(class_name)
     robot = robot_class(args)
