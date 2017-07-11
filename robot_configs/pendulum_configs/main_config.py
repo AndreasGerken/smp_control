@@ -58,6 +58,7 @@ class PendulumConfig():
         # gets set by smp_control
         self.pub = None
         self.smp_control = None
+        self.classname = self.__class__.__name__
 
     def set_sensors(self, use_sensors):
         self.use_sensors = use_sensors

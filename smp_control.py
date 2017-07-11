@@ -20,9 +20,9 @@ from pickler import Pickler
 def dtanh(x):
     return 1 - np.tanh(x)**2
 
-# TODO: Check
+# TODO: if zero?
 def idtanh(x):
-    return 1./dtanh(x)
+    return 1./(dtanh(x) + 0.0001)
 
 ################################################################################
 
@@ -75,15 +75,15 @@ class SMP_control(smp_thread_ros):
 
         # Model
         if self.robot.use_sensors_for_model:
-            self.A  = np.random.uniform(-1e-2, 1e-2, (self.numsen, self.nummot_embedding + self.numsen))
+            self.A  = np.random.uniform(-1e-4, 1e-4, (self.numsen, self.nummot_embedding + self.numsen))
         else:
-            self.A  = np.random.uniform(-1e-2, 1e-2, (self.numsen, self.nummot_embedding))
+            self.A  = np.random.uniform(-1e-4, 1e-4, (self.numsen, self.nummot_embedding))
         self.b = np.zeros((self.numsen,1))
 
         self.EE = 0.
 
         # Controller
-        self.C  = np.random.uniform(-1e-2, 1e-2, (self.nummot, self.numsen_embedding))
+        self.C  = np.random.uniform(-1e-4, 1e-4, (self.nummot, self.numsen_embedding))
         self.h  = np.zeros((self.nummot,1))
 
         self.g  = np.tanh # sigmoidal activation function
@@ -97,7 +97,7 @@ class SMP_control(smp_thread_ros):
         self.xsiAvgSmooth = 0.01
 
         self.pickler = Pickler(self, self.numtimesteps)
-        self.pickler.addOnceVariables(['x', 'y', 'epsC', 'epsA', 'nummot','numsen','lag','embedding'])
+        self.pickler.addOnceVariables(['x', 'y', 'epsC', 'epsA', 'nummot','numsen','lag','embedding',''])
         self.pickler.addFrequentVariables(['A','b','C','h','xsi','EE'])
         self.pickler.initializeFrequentBuffer()
         self.pickleName = 'pickles/newest.pickle'
@@ -105,8 +105,14 @@ class SMP_control(smp_thread_ros):
         self.msg_xsi =  Float32MultiArray()
 
     def run(self):
-        print('starting')
+        self.pickler.addOnceVariables(['robot.use_sensors', 'robot.sensor_dimensions','robot.classname'])
 
+        # initialize motors and wait
+        print('initializing motors')
+        time.sleep(1)
+        self.check_and_send_output()
+        time.sleep(5)
+        print('starting')
         while self.isrunning:
             # check if finished
             if self.cnt_main == self.numtimesteps:
@@ -205,8 +211,8 @@ class SMP_control(smp_thread_ros):
         g_prime_inv = g_prime_inv[:self.nummot,:]
 
         # forward prediction error xsi
-        self.xsi = x_fut - (np.dot(self.A, y_lag) + self.b)
-
+        # clipping prevents overflow in unstable episodes
+        self.xsi = np.clip(x_fut - (np.dot(self.A, y_lag) + self.b), -1e+38, 1e+38)
         self.xsiAvg = np.sum(np.abs(self.xsi)) * self.xsiAvgSmooth + (1 - self.xsiAvgSmooth) * self.xsiAvg
 
         self.msg_xsi.data = self.xsi.flatten().tolist()
@@ -223,9 +229,9 @@ class SMP_control(smp_thread_ros):
         """
         forward model learning
         """
-        # TODO: magic numbers for cooling?
-        self.A += self.epsA * np.dot(self.xsi, y_lag.T)# + (self.A * -0.0003)
-        self.b += self.epsA * self.xsi              #+ (self.b * -0.0001)
+        # cooling of the modelmatrix
+        self.A += self.epsA * np.dot(self.xsi, y_lag.T) + (self.A * -0.0003)
+        self.b += self.epsA * self.xsi              + (self.b * -0.0001)
 
         """
         controller learning
@@ -264,9 +270,9 @@ class SMP_control(smp_thread_ros):
             # moving average
             self.v_avg += (v - self.v_avg) * 0.1
 
-            # TODO: Magic number
             self.EE = .1 / (np.square(np.linalg.norm(v)) + 0.001)
 
+            # Includes cooling of the control matrix
             dC = (np.dot(mue, v.T) + (np.dot((mue * y_lag[:self.nummot] * zeta), -2 * x_lag.T))) * self.EE * self.epsC + (self.C * -0.0003)
             dh = mue * y_lag[:self.nummot] * zeta * -2 * self.EE * self.epsC + (self.h * -0.0001)
 

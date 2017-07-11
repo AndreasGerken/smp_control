@@ -21,8 +21,8 @@ class PuppyConfigPosition(PuppyConfig):
 
     def send_output(self, algorithm_output):
         # position control
-        self.motor_velocity = self.motor_position_estimate - algorithm_output
-        self.motor_position_commands = algorithm_output #+ (np.random.normal(algorithm_output.shape) * 0.1)
+        self.motor_velocity = self.motor_position_estimate - algorithm_output * 0.1
+        self.motor_position_commands = algorithm_output * 0.2 + 0.2 #+ (np.random.normal(algorithm_output.shape) * 0.1)
         self.motor_position_estimate = self.motor_position_estimate * 0.3 + self.motor_position_commands * 0.7
 
         # write the commands to the message and publish them

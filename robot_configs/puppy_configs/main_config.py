@@ -1,4 +1,5 @@
 import numpy as np
+import tf
 
 from std_msgs.msg import Float32MultiArray
 from sensor_msgs.msg import Imu
@@ -20,7 +21,7 @@ class PuppyConfig():
             "/imu/data": [Imu, self.cb_imu],
             }
 
-        self.sensor_dimensions = {"acc": 3, "gyr": 3, "orient": 4, "motor_pos": 4, "motor_vel" : 4}
+        self.sensor_dimensions = {"acc": 3, "gyr": 3, "orient": 4, "euler":3,  "motor_pos": 4, "motor_vel" : 4}
 
         #self.use_sensors = ['orient', 'gyr', 'motor_pos']
         self.use_sensors = None
@@ -55,6 +56,7 @@ class PuppyConfig():
     def set_sensors(self, use_sensors):
         self.use_sensors = use_sensors
         self.numsen = np.sum([self.sensor_dimensions[sensor] for sensor in self.use_sensors])
+        self.imu_vec = np.zeros((self.numsen))
         print self.numsen
 
     def cb_imu(self, msg):
@@ -63,15 +65,23 @@ class PuppyConfig():
 
         if 'acc' in self.use_sensors:
             imu_vec_acc = (msg.linear_acceleration.x, msg.linear_acceleration.y, msg.linear_acceleration.z)
-            sensor_tupel += (imu_vec_acc)
+            sensor_tupel += (imu_vec_acc, )
 
         if 'gyr' in self.use_sensors:
             imu_vec_gyr = (msg.angular_velocity.x, msg.angular_velocity.y, msg.angular_velocity.z)
-            sensor_tupel += (imu_vec_gyr)
+            sensor_tupel += (imu_vec_gyr, )
 
         if 'orient' in self.use_sensors:
             imu_vec_orient = (msg.orientation.x, msg.orientation.y, msg.orientation.z, msg.orientation.w)
-            sensor_tupel += (imu_vec_orient)
+            sensor_tupel += (imu_vec_orient, )
+        if 'euler' in self.use_sensors:
+            quaternion = (
+                msg.orientation.x,
+                msg.orientation.y,
+                msg.orientation.z,
+                msg.orientation.w)
+            euler = tf.transformations.euler_from_quaternion(quaternion)
+            sensor_tupel += (euler, )
 
         if 'motor_pos' in self.use_sensors:
             sensor_tupel += (self.motor_position_estimate,)

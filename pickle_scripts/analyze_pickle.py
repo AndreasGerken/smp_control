@@ -149,7 +149,8 @@ class Analyzer():
         #plt.plot(xValues, np.average(np.abs(allAverageSquaredCorrelations[:,:]), axis=1), c='k', lw = 2, label="average")
         #plt.legend()
 
-
+        """
+        print maximum
         t= 0
         tstart = 0
         printingChannel = -1
@@ -165,9 +166,8 @@ class Analyzer():
                 # change to new printingChannel
                 printingChannel = maxChannel
                 tstart = t - 1
-
-
             t+=1
+        """
 
         #plt.plot(allAverageSquaredCorrelations[:,0])
         #plt.title("Correlation from a episode with")
@@ -620,7 +620,7 @@ class Analyzer():
         ani = animation.FuncAnimation(fig, updatefig, interval=50, blit=True)
         plt.show()
 
-    def time_series(self):
+    def time_series_smoothing(self):
         x = self.variableDict["x"]
         y = self.variableDict["y"]
         sensors = 3
@@ -630,6 +630,71 @@ class Analyzer():
             plt.plot(x[:,i::sensors])
 
         plt.show()
+
+    def details(self):
+        epsA = self.variableDict["epsA"]
+        epsC = self.variableDict["epsC"]
+        creativity = self.variableDict["creativity"]
+        x = self.variableDict["x"]
+        y = self.variableDict["y"]
+        xsi = self.variableDict["xsi"]
+        ee = self.variableDict["EE"]
+        print "epsA\t", epsA
+        print "epsC\t", epsC
+        print "Creativity\t", creativity
+
+    def step_sweep(self):
+        x = self.variableDict["x"]
+        y = self.variableDict["y"]
+        x -= np.mean(x, axis=0)
+        x /= np.std(x,axis=0)
+        x = np.abs(x)
+        f, axarr = plt.subplots(1,1)
+        colors = cm.Greys(np.linspace(0,1,19))
+        for i in range(19):
+            axarr.plot(np.average(x[i*50:i*50 + 25],axis=1), c=colors[i])
+
+            plt.xticks(np.arange(0, 25, 1.0))
+            #axarr[0].plot(y[i*50:i*50 + 20], c= colors[i])
+            #plt.xticks(np.arange(0, 20, 1.0))
+        plt.show()
+
+    def time_series(self):
+        cut = 2000
+        x = self.variableDict["x"][:cut]
+        y = self.variableDict["y"][:cut]
+        xsi = self.variableDict["xsi"][:cut]
+        ee = self.variableDict["EE"][:cut]
+        #print self.variableDict["robot.sensor_dimensions"]
+
+        f, axarr = plt.subplots(4,1)
+
+        sensor_names = ["acc_x", "acc_y", "acc_z", "gyro_x","gyro_y", "gyro_z"]
+        for sen in range(x.shape[1]):
+            axarr[0].plot(x[:,sen],label=sensor_names[sen])
+        axarr[0].set_title("Sensors")
+        axarr[0].legend()
+
+        axarr[1].plot(y)
+
+
+        for i in range(xsi.shape[1]):
+            axarr[2].plot(xsi[:,i,0])
+        axarr[2].set_title("xsi")
+
+        # smoothing_window_C = 500
+        # #for sen in range(xsi.shape[1]):
+        # tmp = np.average(np.abs([np.average(xsi[i+50:i+50+smoothing_window_C,:], axis=0) for i in range(xsi.shape[0]-smoothing_window_C-50)]),axis=1)
+        # axarr[2].plot(np.abs(tmp))
+        # axarr[2].set_title("xsi")
+
+
+        axarr[3].plot(ee)
+
+        f.subplots_adjust(hspace=0.3)
+        plt.legend()
+        plt.show()
+
 
     def split_sensors_effects_smooth(self):
         # TODO: not functional
@@ -682,19 +747,62 @@ class Analyzer():
 
 
     def model_matrix_plot(self):
+        onePlot = False
+
         C = self.variableDict["C"]
         A = self.variableDict["A"]
+        x = self.variableDict["x"]
+        y = self.variableDict["y"]
+        x_std = np.std(x, axis=0)
+        y_std = np.std(y, axis=0)
 
-        plt.subplot(121)
-        for i in range(C.shape[1]):
-            for j in range(C.shape[2]):
-                plt.plot(C[:,i,j], label="C "+ str(i) + " " + str(j))
+        use_sensors = self.variableDict["robot.use_sensors"]
+        sensor_dimensions = self.variableDict["robot.sensor_dimensions"]
+
+        # create list of sensor names
+        sensor_names = []
+        for sensor in use_sensors:
+            # repeat the sensor name with an identifier as often as the sensor has dimensions
+            sensor_names.extend([sensor + str(j) for j in range(sensor_dimensions[sensor])])
+
+        colors = cm.jet(np.linspace(0, 1, len(sensor_names)))
+        #colors = ['r','r','r','b','b','b','k','k','k','k']
+
+        cut_s = 0
+        cut_e = C.shape[0]
+        smoothing_window_C = 1
+        alpha_C = 0.5
+
+        if onePlot:
+            plt.subplot(121)
+        for mot in range(C.shape[1]):
+            for sen in range(C.shape[2]):
+                if not onePlot:
+                    plt.subplot(C.shape[1], 2, mot * 2 + 1)
+
+                tmp = [np.average(C[i:i+smoothing_window_C,mot,sen]) for i in range(C.shape[0]-smoothing_window_C)]
+                tmp = np.array(tmp[cut_s:cut_e]) / y_std[mot]
+                if(mot == 0):
+                    plt.plot(tmp,label="C " +sensor_names[sen], c=colors[sen] ,alpha=alpha_C)
+                else:
+                    plt.plot(tmp, c=colors[sen],alpha=alpha_C)
+
         plt.legend()
-        plt.subplot(122)
-        for i in range(A.shape[1]):
-            for j in range(A.shape[2]):
-                plt.plot(A[:,i,j], label="A "+ str(i) + " " + str(j))
-        plt.legend()
+        smoothing_window_A = 1
+        alpha_A = 0.5
+        if onePlot:
+            plt.subplot(122)
+        for mot in range(A.shape[2]):
+            for sen in range(A.shape[1]):
+                if not onePlot:
+                    plt.subplot(C.shape[1],2, mot * 2 + 2)
+                tmp = [np.average(A[i:i+smoothing_window_A,sen,mot]) for i in range(C.shape[0]-smoothing_window_A)]
+                tmp = np.array(tmp[cut_s:cut_e]) / x_std[sen]
+                if(mot==0):
+                    plt.plot(tmp, label="A " + sensor_names[sen],c=colors[sen],alpha=alpha_A)
+                else:
+                    plt.plot(tmp,c=colors[sen],alpha=alpha_A)
+                plt.legend()
         plt.show()
 
     def model_matrix_animate(self):
@@ -761,7 +869,9 @@ if __name__ == "__main__":
     'model_matrix_animate': Analyzer.model_matrix_animate,
     'model_matrix_plot_smooth': Analyzer.model_matrix_plot_smooth,
     'find_emb': Analyzer.find_best_embsize,
-    'activity': Analyzer.activity_plot2
+    'activity': Analyzer.activity_plot2,
+    'details': Analyzer.details,
+    'step_sweep': Analyzer.step_sweep
     }
 
     parser = argparse.ArgumentParser(description="lpzrobots ROS controller: test homeostatic/kinetic learning")

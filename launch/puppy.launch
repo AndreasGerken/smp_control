@@ -12,5 +12,7 @@
         <param name="publish_tf" value="true" />
     </node>
 
+    <!--
     <node name="modelvisualisation" pkg="rviz" type="rviz" output="screen" args="-d /home/andi/Documents/github/selfRegulation/ROS/launch/rviz_config.rviz" />
+    -->
 </launch>

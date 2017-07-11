@@ -8,11 +8,13 @@ class PuppyConfigVelocity(PuppyConfig):
     def __init__(self,args):
         PuppyConfig.__init__(self,args)
 
-        self.set_sensors(['gyr', 'motor_pos'])
+        #self.set_sensors(['gyr', 'motor_pos'])
+        self.set_sensors(['acc','gyr'])
         self.lag = 4
         self.embedding = 1
         self.learning_enabled = True
-        self.use_sensors_for_model = True
+        self.use_sensors_for_model = False
+        self.classname = self.__class__.__name__
 
     def send_output(self, algorithm_output):
         # velocity control

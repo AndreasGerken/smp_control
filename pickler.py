@@ -20,24 +20,6 @@ class Pickler():
     def addFrequentVariables(self, variableNames):
         self._addToList(variableNames, self.variableNamesFrequent)
 
-    def initializeFrequentBuffer(self):
-        self.frequentBuffer = {key: np.zeros((self.numtimesteps,) + np.array(self.source_dict[key]).shape) for key in self.variableNamesFrequent}
-
-    def saveFrequentVariablesToBuffer(self, i):
-        for key in self.variableNamesFrequent:
-            self.frequentBuffer[key][i] = self.source_dict[key]
-
-    def save_pickle(self, pickleName):
-        # copy the requested items from the source_dict
-        once_dict = {key:self.source_dict[key] for key in self.variableNamesOnce}
-        frequent_dict = {key:self.frequentBuffer[key] for key in self.variableNamesFrequent}
-
-        # merge the dicts and write them to the given file
-        once_dict.update(frequent_dict)
-        pickle.dump(once_dict, open(pickleName, 'wb'))
-
-        print "Variables saved in pickle file once: [%s] freq: [%s] filename = %s" % (', '.join(self.variableNamesOnce), ', '.join(self.variableNamesFrequent), pickleName)
-
     def _addToList(self, variableNames, variableList):
         # convert scalar to list if necessary
         if not isinstance(variableNames, list):
@@ -49,3 +31,32 @@ class Pickler():
 
         # add the variableNames to the existing list
         variableList.extend(variableNames)
+
+    def initializeFrequentBuffer(self):
+        self.frequentBuffer = {key: np.zeros((self.numtimesteps,) + np.array(self.source_dict[key]).shape) for key in self.variableNamesFrequent}
+
+    def saveFrequentVariablesToBuffer(self, i):
+        for key in self.variableNamesFrequent:
+            self.frequentBuffer[key][i] = self.source_dict[key]
+
+    def resolveOnceKey(self, _dict, key):
+        splitted_key = key.split('.')
+
+        if len(splitted_key) > 1:
+            return self.resolveOnceKey(_dict[splitted_key[0]].__dict__, '.'.join(splitted_key[1:]))
+        else:
+            return _dict[key]
+
+    def save_pickle(self, pickleName):
+        # copy the requested items from the source_dict
+        # TODO: Resolve key einbauen
+        once_dict = {key:self.resolveOnceKey(self.source_dict, key) for key in self.variableNamesOnce}
+        #once_dict = {key:self.source_dict[key] for key in self.variableNamesOnce}
+
+        frequent_dict = {key:self.frequentBuffer[key] for key in self.variableNamesFrequent}
+
+        # merge the dicts and write them to the given file
+        once_dict.update(frequent_dict)
+        pickle.dump(once_dict, open(pickleName, 'wb'))
+
+        print "Variables saved in pickle file once: [%s] freq: [%s] filename = %s" % (', '.join(self.variableNamesOnce), ', '.join(self.variableNamesFrequent), pickleName)
