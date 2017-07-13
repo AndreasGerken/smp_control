@@ -32,8 +32,8 @@ class PuppyConfigSinSweep(PuppyConfig):
         # write the commands to the message and publish them
         self.msg_motors.data = self.motor_position_commands * self.output_gain
         self.msg_motors_velocity.data = algorithm_output
-        self.smp_control.pub["_homeostasis_motor"].publish(self.msg_motors)
-        self.smp_control.pub["_homeostasis_motor_velocity"].publish(self.msg_motors_velocity)
+        self.smp_control.pub["_puppyMotor"].publish(self.msg_motors)
+        self.smp_control.pub["_puppyMotorVelocity"].publish(self.msg_motors_velocity)
 
     def before_exit(self):
         return

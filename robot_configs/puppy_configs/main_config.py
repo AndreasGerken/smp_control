@@ -3,7 +3,7 @@ import tf
 
 from std_msgs.msg import Float32MultiArray
 from sensor_msgs.msg import Imu
-
+from robot_configs.general_robot_config import RobotConfig
 
 def get_class():
     return PuppyConfig
@@ -15,7 +15,7 @@ def add_specific_args(parser):
     return
 
 
-class PuppyConfig():
+class PuppyConfig(RobotConfig):
     def __init__(self, args):
         self.pub_names = {
             "/puppyMotor": [Float32MultiArray],
@@ -31,10 +31,6 @@ class PuppyConfig():
         #self.use_sensors = ['orient', 'gyr', 'motor_pos']
         self.use_sensors = None
         self.numsen = 0
-        self.set_sensors(['orient', 'motor_pos'])
-        #self.use_sensors = ['orient', 'motor_pos', 'gyr', 'acc']
-
-        #self.numsen = np.sum([sensor_dimensions[sensor] for sensor in self.use_sensors])
         self.nummot = 4
         self.lag = 4
         self.embedding = 1
@@ -63,40 +59,44 @@ class PuppyConfig():
         self.numsen = np.sum([self.sensor_dimensions[sensor]
                               for sensor in self.use_sensors])
         self.imu_vec = np.zeros((self.numsen))
-        print self.numsen
+        print "sensor modalities used: [" + ",".join(self.use_sensors) + "]"
 
     def cb_imu(self, msg):
         """ROS IMU callback"""
         sensor_tupel = ()
 
-        if 'acc' in self.use_sensors:
-            imu_vec_acc = (msg.linear_acceleration.x,
-                           msg.linear_acceleration.y, msg.linear_acceleration.z)
-            sensor_tupel += (imu_vec_acc, )
+        # go through the use_sensors array and attach the values to the sensor
+        # tupel. The order of use_sensors is maintained in the sensor_tupel
+        for sensor in self.use_sensors:
+            if sensor == 'acc':
+                imu_vec_acc = (msg.linear_acceleration.x,
+                               msg.linear_acceleration.y, msg.linear_acceleration.z)
+                sensor_tupel += (imu_vec_acc, )
 
-        if 'gyr' in self.use_sensors:
-            imu_vec_gyr = (msg.angular_velocity.x,
-                           msg.angular_velocity.y, msg.angular_velocity.z)
-            sensor_tupel += (imu_vec_gyr, )
+            elif sensor == 'gyr' :
+                imu_vec_gyr = (msg.angular_velocity.x,
+                               msg.angular_velocity.y, msg.angular_velocity.z)
+                sensor_tupel += (imu_vec_gyr, )
 
-        if 'orient' in self.use_sensors:
-            imu_vec_orient = (msg.orientation.x, msg.orientation.y,
-                              msg.orientation.z, msg.orientation.w)
-            sensor_tupel += (imu_vec_orient, )
-        if 'euler' in self.use_sensors:
-            quaternion = (
-                msg.orientation.x,
-                msg.orientation.y,
-                msg.orientation.z,
-                msg.orientation.w)
-            euler = tf.transformations.euler_from_quaternion(quaternion)
-            sensor_tupel += (euler, )
+            elif sensor == 'orient' :
+                imu_vec_orient = (msg.orientation.x, msg.orientation.y,
+                                  msg.orientation.z, msg.orientation.w)
+                sensor_tupel += (imu_vec_orient, )
 
-        if 'motor_pos' in self.use_sensors:
-            sensor_tupel += (self.motor_position_estimate,)
+            elif sensor =='euler' :
+                quaternion = (
+                    msg.orientation.x,
+                    msg.orientation.y,
+                    msg.orientation.z,
+                    msg.orientation.w)
+                euler = tf.transformations.euler_from_quaternion(quaternion)
+                sensor_tupel += (euler, )
 
-        if 'motor_vel' in self.use_sensors:
-            sensor_tupel += (self.motor_velocity,)
+            elif sensor == 'motor_pos' :
+                sensor_tupel += (self.motor_position_estimate,)
+
+            elif sensor == 'motor_vel' :
+                sensor_tupel += (self.motor_velocity,)
 
         # bring them together
         if(len(sensor_tupel) == 0):
@@ -107,15 +107,5 @@ class PuppyConfig():
     def get_input(self):
         return self.imu_vec
 
-    def send_output(self, algorithm_output):
-        self.motor_velocity = self.motor_position_commands - algorithm_output
-        self.motor_position_commands = algorithm_output
-        self.motor_position_estimate = self.motor_position_estimate * \
-            0.3 + self.motor_position_commands * 0.7
-
-        # write the commands to the message and publish them
-        self.msg_motors.data = self.motor_position_commands * self.output_gain
-        self.msg_motors_velocity.data = self.motor_velocity
-        self.smp_control.pub["_puppyMotor"].publish(self.msg_motors)
-        self.smp_control.pub["_puppyMotorVelocity"].publish(
-            self.msg_motors_velocity)
+    # def send_output(self, algorithm_output):
+    # this function should be implemented by child classes

@@ -110,7 +110,7 @@ class SMP_control(smp_thread_ros):
 
         self.pickler = Pickler(self, self.numtimesteps)
         self.pickler.addOnceVariables(
-            ['x', 'y', 'epsC', 'epsA', 'nummot', 'numsen', 'lag', 'embedding', ''])
+            ['x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding'])
         self.pickler.addFrequentVariables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
         self.pickler.initializeFrequentBuffer()
         self.pickleName = 'pickles/newest.pickle'

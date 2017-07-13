@@ -26,8 +26,10 @@ class Pickler():
             variableNames = variableNames.tolist()
 
         # check if all variableNames are available in source instance
-        if not np.all([i in self.source_dict.keys() for i in variableList]):
-            warnings.warn("Some variables which should be added to the pickler are not available.")
+        #if not np.all([i in self.source_dict.keys() for i in variableList]):
+        for key in variableList:
+            if not key in self.source_dict.keys():
+                warnings.warn("The key '%s' was not in the source dict" % (key))
 
         # add the variableNames to the existing list
         variableList.extend(variableNames)
