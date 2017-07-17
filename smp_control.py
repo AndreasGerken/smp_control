@@ -24,6 +24,7 @@ def dtanh(x):
     """ this is the derivative of the tanh function """
     return 1 - np.tanh(x)**2
 
+
 def idtanh(x):
     """ this is the inverse of the tanh function, with a protection against
     zero division zero """
@@ -109,10 +110,9 @@ class SMP_control(smp_thread_ros):
         self.xsiAvgSmooth = 0.01
 
         self.pickler = Pickler(self, self.numtimesteps)
-        self.pickler.addOnceVariables(
+        self.pickler.add_once_variables(
             ['x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding'])
-        self.pickler.addFrequentVariables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
-        self.pickler.initializeFrequentBuffer()
+        self.pickler.add_frequent_variables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
         self.pickleName = 'pickles/newest.pickle'
 
         self.msg_xsi = Float32MultiArray()
@@ -121,7 +121,7 @@ class SMP_control(smp_thread_ros):
         """ Main loop of the algorithms, runs until the maximum timesteps are
         reached or the loop is canceled.
         """
-        self.pickler.addOnceVariables(
+        self.pickler.add_once_variables(
             ['robot.use_sensors', 'robot.sensor_dimensions', 'robot.classname'])
 
         # initialize motors and wait
@@ -145,7 +145,7 @@ class SMP_control(smp_thread_ros):
 
             self.check_and_send_output()
 
-            self.pickler.saveFrequentVariablesToBuffer(self.cnt_main)
+            self.pickler.save_frequent_variables_to_buffer(self.cnt_main)
 
             self.cnt_main += 1
 
@@ -341,7 +341,6 @@ class SMP_control(smp_thread_ros):
         print('ending')
 
 
-#----------------------------------------------------------------------
 def dynamic_importer(name):
     """
     Dynamically imports modules / classes
@@ -396,6 +395,9 @@ if __name__ == '__main__':
     class_name = args.file.split('.py')[0]
     robot_file, robot_class = dynamic_importer(class_name)
     robot = robot_class(args)
+
+    # check if robot has all required properties
+    robot.check_properties()
 
     smp_control = SMP_control(args, robot)
 
