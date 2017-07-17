@@ -93,4 +93,4 @@ class Pickler():
         once_dict.update(frequent_dict)
         pickle.dump(once_dict, open(pickle_file_name, 'wb'))
 
-        print "Variables saved in pickle file once: [%s] freq: [%s] filename = %s" % (', '.join(self.variableNamesOnce), ', '.join(self.variableNamesFrequent), pickleName)
+        print "Variables saved in pickle file once: [%s] freq: [%s] filename = %s" % (', '.join(self.variableNamesOnce), ', '.join(self.variableNamesFrequent), pickle_file_name)

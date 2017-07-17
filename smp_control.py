@@ -38,11 +38,11 @@ class SMP_control(smp_thread_ros):
     homeostasis and homeokinesis on a ros enabled robot.
     """
 
-    modes = {'hs': 0, 'hk': 1}
+    _modes = {'hs': 0, 'hk': 1}
 
     def __init__(self, args, robot_config):
         # save arguments
-        self.mode = SMP_control.modes[args.mode]
+        self.mode = SMP_control._modes[args.mode]
         self.numtimesteps = args.numtimesteps
         self.loop_time = args.loop_time
         self.verbose = args.verbose
@@ -376,7 +376,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='TODO')
     parser.add_argument('file')
     parser.add_argument('-m', '--mode', type=str,
-                        help='select mode [hs] from ' + str(SMP_control.modes), default='hk')
+                        help='select mode [hs] from ' + str(SMP_control._modes), default='hk')
     parser.add_argument('-n', '--numtimesteps', type=int,
                         help='Episode length in timesteps, standard 1000', default=1000)
     parser.add_argument('-lt', '--loop_time', type=float,

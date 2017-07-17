@@ -1,0 +1,176 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    
+    <title>smp_control module &#8212; smp_control 1 documentation</title>
+    
+    <link rel="stylesheet" href="../_static/classic.css" type="text/css" />
+    <link rel="stylesheet" href="../_static/pygments.css" type="text/css" />
+    
+    <script type="text/javascript">
+      var DOCUMENTATION_OPTIONS = {
+        URL_ROOT:    '../',
+        VERSION:     '1',
+        COLLAPSE_INDEX: false,
+        FILE_SUFFIX: '.html',
+        HAS_SOURCE:  true,
+        SOURCELINK_SUFFIX: '.txt'
+      };
+    </script>
+    <script type="text/javascript" src="../_static/jquery.js"></script>
+    <script type="text/javascript" src="../_static/underscore.js"></script>
+    <script type="text/javascript" src="../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="robot_configs.puppy_configs package" href="robot_configs.puppy_configs.html" /> 
+  </head>
+  <body role="document">
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="robot_configs.puppy_configs.html" title="robot_configs.puppy_configs package"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">smp_control 1 documentation</a> &#187;</li>
+          <li class="nav-item nav-item-1"><a href="modules.html" accesskey="U">smp_control</a> &#187;</li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <div class="section" id="module-smp_control">
+<span id="smp-control-module"></span><h1>smp_control module<a class="headerlink" href="#module-smp_control" title="Permalink to this headline">¶</a></h1>
+<dl class="class">
+<dt id="smp_control.SMP_control">
+<em class="property">class </em><code class="descclassname">smp_control.</code><code class="descname">SMP_control</code><span class="sig-paren">(</span><em>args</em>, <em>robot_config</em><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.SMP_control" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal"><span class="pre">smp_thread.smp_thread_ros</span></code></p>
+<p>This class provides the main functionality of running the algorithms
+homeostasis and homeokinesis on a ros enabled robot.</p>
+<dl class="method">
+<dt id="smp_control.SMP_control.check_and_send_output">
+<code class="descname">check_and_send_output</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.SMP_control.check_and_send_output" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gets the output from the y matrix, checks the dimensionality and
+commands the robot class to send the output.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="smp_control.SMP_control.compute_new_output">
+<code class="descname">compute_new_output</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.SMP_control.compute_new_output" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes a new output from the sensor readings and the controller
+variables. This output is saved to the y matrix.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="smp_control.SMP_control.exit_loop">
+<code class="descname">exit_loop</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.SMP_control.exit_loop" title="Permalink to this definition">¶</a></dt>
+<dd><p>Ends the loop and saves the data to a pickle file</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="smp_control.SMP_control.get_and_check_input">
+<code class="descname">get_and_check_input</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.SMP_control.get_and_check_input" title="Permalink to this definition">¶</a></dt>
+<dd><p>Gathers the input from the robot and checks if the dimensionality
+is correct, then it saves the new input to the x matrix.</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="smp_control.SMP_control.learning_step">
+<code class="descname">learning_step</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.SMP_control.learning_step" title="Permalink to this definition">¶</a></dt>
+<dd><p>One learning step of the learning algorithm (homeostasis or homeokinesis)</p>
+</dd></dl>
+
+<dl class="method">
+<dt id="smp_control.SMP_control.run">
+<code class="descname">run</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.SMP_control.run" title="Permalink to this definition">¶</a></dt>
+<dd><p>Main loop of the algorithms, runs until the maximum timesteps are
+reached or the loop is canceled.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="function">
+<dt id="smp_control.dtanh">
+<code class="descclassname">smp_control.</code><code class="descname">dtanh</code><span class="sig-paren">(</span><em>x</em><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.dtanh" title="Permalink to this definition">¶</a></dt>
+<dd><p>this is the derivative of the tanh function</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="smp_control.dynamic_importer">
+<code class="descclassname">smp_control.</code><code class="descname">dynamic_importer</code><span class="sig-paren">(</span><em>name</em><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.dynamic_importer" title="Permalink to this definition">¶</a></dt>
+<dd><p>Dynamically imports modules / classes</p>
+</dd></dl>
+
+<dl class="function">
+<dt id="smp_control.idtanh">
+<code class="descclassname">smp_control.</code><code class="descname">idtanh</code><span class="sig-paren">(</span><em>x</em><span class="sig-paren">)</span><a class="headerlink" href="#smp_control.idtanh" title="Permalink to this definition">¶</a></dt>
+<dd><p>this is the inverse of the tanh function, with a protection against
+zero division zero</p>
+</dd></dl>
+
+</div>
+
+
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <h4>Previous topic</h4>
+  <p class="topless"><a href="robot_configs.puppy_configs.html"
+                        title="previous chapter">robot_configs.puppy_configs package</a></p>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="../_sources/apidoc/smp_control.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3>Quick search</h3>
+    <form class="search" action="../search.html" method="get">
+      <div><input type="text" name="q" /></div>
+      <div><input type="submit" value="Go" /></div>
+      <input type="hidden" name="check_keywords" value="yes" />
+      <input type="hidden" name="area" value="default" />
+    </form>
+</div>
+<script type="text/javascript">$('#searchbox').show(0);</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="../genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="../py-modindex.html" title="Python Module Index"
+             >modules</a> |</li>
+        <li class="right" >
+          <a href="robot_configs.puppy_configs.html" title="robot_configs.puppy_configs package"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="../index.html">smp_control 1 documentation</a> &#187;</li>
+          <li class="nav-item nav-item-1"><a href="modules.html" >smp_control</a> &#187;</li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2017, Andreas Gerken.
+      Created using <a href="http://sphinx-doc.org/">Sphinx</a> 1.5.3.
+    </div>
+  </body>
+</html>

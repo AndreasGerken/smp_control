@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="umlet" version="14.2">
+  <zoom_level>10</zoom_level>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>90</x>
+      <y>410</y>
+      <w>310</w>
+      <h>360</h>
+    </coordinates>
+    <panel_attributes>/*RobotConfig*/
+--
+*responsibilities:*
+-- abstract configuration class
+-- defines the interface
+--
+*variables:*
+- requiredProperties
+/- use_sensors/
+/- sensor_dimensions/
+/- classname/
+/- learning_enabled/
+/- pub_names/
+/- sub_names/
+/- lag/
+/- embedding/
+/- numsen/
+/- nummot/
+--
+*methods:*
+/+ get_input()/
+/+ send_output(algorithm_output)/
++ check_properties()
+</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>90</x>
+      <y>160</y>
+      <w>310</w>
+      <h>210</h>
+    </coordinates>
+    <panel_attributes>*Specific configurations*
+--
+*responsibilities:*
+- robot specific implementation
+- trigger the communication with
+  the sensors and actors of the robot
+--
+*variables:*
+- variables from RobotConfig
+--
+*methods:*
+/+ methods from RobotConfig/
+/+ robot specific methods/
+/+ before_exit() [optional]/</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>130</x>
+      <y>360</y>
+      <w>30</w>
+      <h>70</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;10.0;50.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>470</x>
+      <y>290</y>
+      <w>310</w>
+      <h>270</h>
+    </coordinates>
+    <panel_attributes>*SMP_control*
+--
+*responsibilities:*
+- run the learning algorith
+- trigger the interface to the robot configuration
+--
+*variables:*
+- variables from arguments
+- variables for the learning algorithm
+- buffers for sensor and motor states
+--
+*methods:*
+- run()
+- get_and_check_input()
+- compute_new_output()
+- check_and_send_output()
+- learning_step()
+- exit_loop()
+
+</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>470</x>
+      <y>600</y>
+      <w>310</w>
+      <h>110</h>
+    </coordinates>
+    <panel_attributes>*smp_base::smp_thread_ros*
+--
+*responsibilities:*
+- provide threading
+- connect to ROS including subscring
+  and advertising threads</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>520</x>
+      <y>550</y>
+      <w>30</w>
+      <h>70</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;&lt;-</panel_attributes>
+    <additional_attributes>10.0;10.0;10.0;50.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>390</x>
+      <y>510</y>
+      <w>100</w>
+      <h>40</h>
+    </coordinates>
+    <panel_attributes>lt=-
+m1=1
+m2=1</panel_attributes>
+    <additional_attributes>10.0;10.0;80.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>830</x>
+      <y>160</y>
+      <w>310</w>
+      <h>270</h>
+    </coordinates>
+    <panel_attributes>*Pickler*
+--
+*responsibilities:*
+- buffer data from connected instance
+- save data to a file in the pickle format
+--
+*variables:*
+- variableNamesOnce
+- variableNamesFrequent
+- numtimesteps
+- source_dict
+- frequentBuffer
+--
+*methods:*
+- add_once_variables(variable_names)
+- add_frequent_variables(variable_names)
+- save_frequent_variablesToBuffer(i)
+- save_pickle(pickle_name)</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>520</x>
+      <y>220</y>
+      <w>330</w>
+      <h>90</h>
+    </coordinates>
+    <panel_attributes>lt=-
+m1=1
+m2=1</panel_attributes>
+    <additional_attributes>310.0;10.0;10.0;10.0;10.0;70.0</additional_attributes>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>830</x>
+      <y>600</y>
+      <w>290</w>
+      <h>60</h>
+    </coordinates>
+    <panel_attributes>lt=.
+*ROS*
+--
+serial_node</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>UMLClass</id>
+    <coordinates>
+      <x>830</x>
+      <y>710</y>
+      <w>290</w>
+      <h>30</h>
+    </coordinates>
+    <panel_attributes>lt=.
+*Low level robot implementation*</panel_attributes>
+    <additional_attributes/>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>880</x>
+      <y>650</y>
+      <w>60</w>
+      <h>80</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;.&gt;
+serial
+</panel_attributes>
+    <additional_attributes>10.0;60.0;10.0;10.0</additional_attributes>
+  </element>
+  <element>
+    <id>Relation</id>
+    <coordinates>
+      <x>770</x>
+      <y>610</y>
+      <w>80</w>
+      <h>40</h>
+    </coordinates>
+    <panel_attributes>lt=&lt;.&gt;
+</panel_attributes>
+    <additional_attributes>60.0;20.0;10.0;20.0</additional_attributes>
+  </element>
+</diagram>
