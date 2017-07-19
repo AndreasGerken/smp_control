@@ -8,15 +8,10 @@ from robot_configs.general_robot_config import RobotConfig
 def get_class():
     return PuppyConfig
 
-# static class methods
-
-
-def add_specific_args(parser):
-    return
-
-
 class PuppyConfig(RobotConfig):
     def __init__(self, args):
+        RobotConfig.__init__(self)
+
         self.pub_names = {
             "/puppyMotor": [Float32MultiArray],
             "/puppyMotorVelocity": [Float32MultiArray],
@@ -48,18 +43,7 @@ class PuppyConfig(RobotConfig):
         self.motor_velocity = np.zeros((self.nummot))
         self.motor_position_commands = np.zeros_like(self.motor_velocity)
         self.motor_position_estimate = np.zeros_like(self.motor_velocity)
-        self.imu_vec = np.zeros((self.numsen))
-
-        # gets set by smp_control
-        self.pub = None
-        self.smp_control = None
-
-    def set_sensors(self, use_sensors):
-        self.use_sensors = use_sensors
-        self.numsen = np.sum([self.sensor_dimensions[sensor]
-                              for sensor in self.use_sensors])
-        self.imu_vec = np.zeros((self.numsen))
-        print "sensor modalities used: [" + ",".join(self.use_sensors) + "]"
+        self.sensor_vec = np.zeros((self.numsen))
 
     def cb_imu(self, msg):
         """ROS IMU callback"""
@@ -100,12 +84,12 @@ class PuppyConfig(RobotConfig):
 
         # bring them together
         if(len(sensor_tupel) == 0):
-            self.imu_vec = None
+            self.sensor_vec = None
         else:
-            self.imu_vec = np.hstack(sensor_tupel)
+            self.sensor_vec = np.hstack(sensor_tupel)
 
     def get_input(self):
-        return self.imu_vec
+        return self.sensor_vec
 
     # def send_output(self, algorithm_output):
     # this function should be implemented by child classes

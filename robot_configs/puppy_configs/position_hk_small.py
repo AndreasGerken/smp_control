@@ -19,7 +19,6 @@ class PuppyConfigPosition(PuppyConfig):
         self.embedding = 1
         self.learning_enabled = True
         self.use_sensors_for_model = False
-        self.classname = self.__class__.__name__
 
     def send_output(self, algorithm_output):
         # position control

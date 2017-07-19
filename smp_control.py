@@ -396,6 +396,8 @@ if __name__ == '__main__':
     robot_file, robot_class = dynamic_importer(class_name)
     robot = robot_class(args)
 
+    print "config class %s loaded" % (robot.classname)
+
     # check if robot has all required properties
     robot.check_properties()
 
