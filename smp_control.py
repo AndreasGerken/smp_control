@@ -77,7 +77,11 @@ class SMP_control(smp_thread_ros):
         self.nummot_embedding = self.nummot * self.embedding
 
         self.cnt_main = 0
+
+        # This array saves all sensor data
         self.x = np.zeros((self.numtimesteps, self.numsen))
+
+        # This array saves all motor data
         self.y = np.zeros((self.numtimesteps, self.nummot))
 
         # learning variables
@@ -86,7 +90,7 @@ class SMP_control(smp_thread_ros):
         # Model
         if self.robot.use_sensors_for_model:
             self.A = np.random.uniform(-1e-4, 1e-4,
-                                       (self.numsen, self.nummot_embedding + self.numsen))
+                                       (self.numsen, self.nummot_embedding + self.numsen_embedding))
         else:
             self.A = np.random.uniform(-1e-4, 1e-4,
                                        (self.numsen, self.nummot_embedding))
@@ -104,14 +108,14 @@ class SMP_control(smp_thread_ros):
 
         self.L = np.zeros((self.numsen_embedding, self.nummot))
         self.v_avg = np.zeros((self.numsen_embedding, 1))
-        self.xsi = np.zeros((self.numsen_embedding, 1))
+        self.xsi = np.zeros((self.numsen, 1))
 
         self.xsiAvg = 0
         self.xsiAvgSmooth = 0.01
 
         self.pickler = Pickler(self, self.numtimesteps)
         self.pickler.add_once_variables(
-            ['x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding'])
+            ['numtimesteps','x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding'])
         self.pickler.add_frequent_variables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
         self.pickleName = 'pickles/newest.pickle'
 
@@ -178,13 +182,15 @@ class SMP_control(smp_thread_ros):
         """
         if self.cnt_main < self.embedding:
             return
-        x_fut = self.x[self.cnt_main -
+        x_fut_emb = self.x[self.cnt_main -
                        self.embedding: self.cnt_main, :].flatten()
-        Cx_fut = np.dot(self.C, x_fut).reshape((self.nummot, 1))
+        Cx_fut = np.dot(self.C, x_fut_emb).reshape((self.nummot, 1))
 
         self.y[self.cnt_main, :] = self.g(Cx_fut + self.h)[:, 0]
+
         if self.verbose:
             print 'x_fut:\t', x_fut
+            print 'C:\t', self.C
             print 'Cx_fut\t: ', Cx_fut
             print 'new y\t', self.y[self.cnt_main, :]
 
@@ -196,8 +202,8 @@ class SMP_control(smp_thread_ros):
 
         # check output dimensionality
         if(len(motor_output) != self.nummot):
-            raise Exception("numsen doesn't match up with the real input data dimensionality numsen: " +
-                            str(self.numsen_embedding) + ', len: ' + str(len(motor_output)))
+            raise Exception("nummot doesn't match up with the real input data dimensionality nummot: " +
+                            str(self.nummot) + ', len: ' + str(len(motor_output)))
 
         if self.verbose:
             print 'Outputs: ', motor_output
@@ -217,23 +223,22 @@ class SMP_control(smp_thread_ros):
         # self.pub["_lpzros_x"].publish(self.msg_inputs)
 
         # local variables
-        # results in lagged (nummot, 1) vector
-        x_lag = np.atleast_2d(
-            self.x[self.cnt_main - self.lag - self.embedding:self.cnt_main - self.lag, :].flatten()).T
+        # results in lagged (numsen_embedding, 1) vector
+        x_lag_emb = np.atleast_2d(
+            self.x[self.cnt_main - self.lag - self.embedding : self.cnt_main - self.lag, :].flatten()).T
 
-        # results in (nummot,1) vector
+        # results in (numsen,1) vector
         x_fut = np.atleast_2d(self.x[self.cnt_main, :].flatten()).T
 
-        # results in lagged (numsen,1) vector
-        y_lag = np.atleast_2d(
+        # results in lagged (nummot_embedding,1) vector
+        y_lag_emb = np.atleast_2d(
             self.y[self.cnt_main - self.lag - self.embedding: self.cnt_main - self.lag, :].flatten()).T
 
-        # TODO: THIS IS NOT WORKING!!!!
+        # attach the sensor data to the model input
         if self.robot.use_sensors_for_model:
+            y_lag_emb = np.vstack((y_lag_emb, x_lag_emb))
 
-            y_lag = np.vstack((y_lag, x_lag))
-
-        z = np.dot(self.C, x_lag + self.v_avg * self.creativity) + self.h
+        z = np.dot(self.C, x_lag_emb + self.v_avg * self.creativity) + self.h
 
         g_prime = dtanh(z)  # derivative of g
         g_prime_inv = idtanh(z)  # inverse derivative of g
@@ -244,7 +249,7 @@ class SMP_control(smp_thread_ros):
         # forward prediction error xsi
         # clipping prevents overflow in unstable episodes
         self.xsi = np.clip(
-            x_fut - (np.dot(self.A, y_lag) + self.b), -1e+38, 1e+38)
+            x_fut - (np.dot(self.A, y_lag_emb) + self.b), -1e+38, 1e+38)
         self.xsiAvg = np.sum(np.abs(self.xsi)) * self.xsiAvgSmooth + \
             (1 - self.xsiAvgSmooth) * self.xsiAvg
 
@@ -252,8 +257,8 @@ class SMP_control(smp_thread_ros):
         self.pub['_lpzros_xsi'].publish(self.msg_xsi)
 
         if(self.verbose):
-            print "x %s\t" % str(x_lag)
-            print "y %s\t" % str(y_lag)
+            print "x %s\t" % str(x_lag_emb)
+            print "y %s\t" % str(y_lag_emb)
             print 'g_prime\t', g_prime
             print 'g_prime_inv\t', g_prime_inv
             print "Xsi Average %f\t" % self.xsiAvg
@@ -262,7 +267,7 @@ class SMP_control(smp_thread_ros):
         forward model learning
         """
         # cooling of the modelmatrix
-        self.A += self.epsA * np.dot(self.xsi, y_lag.T) + (self.A * -0.0003)
+        self.A += self.epsA * np.dot(self.xsi, y_lag_emb.T) + (self.A * -0.0003)
         self.b += self.epsA * self.xsi + (self.b * -0.0001)
 
         """
@@ -272,7 +277,7 @@ class SMP_control(smp_thread_ros):
         if self.mode == 0:  # homestastic learning
             eta = np.dot(self.A.T, self.xsi)
 
-            dC = np.dot(eta * g_prime, x_lag.T) * self.epsC
+            dC = np.dot(eta * g_prime, x_lag_emb.T) * self.epsC
             dh = eta * g_prime * self.epsC
 
             if self.verbose:
@@ -283,10 +288,9 @@ class SMP_control(smp_thread_ros):
             # TODO: why is this different to eta in homeostasis?
             eta = np.dot(np.linalg.pinv(self.A), self.xsi)
 
-            # cut of embedding
+            # cut of embedding and sensors attached
             eta = eta[:self.nummot, :]
 
-            # TODO: Why Clip?
             # after M inverse
             # zeta = eta * g_prime_inv
             zeta = np.clip(eta * g_prime_inv, -1., 1.)
@@ -308,8 +312,8 @@ class SMP_control(smp_thread_ros):
 
             # Includes cooling of the control matrix
             dC = (np.dot(mue, v.T) + (np.dot((mue *
-                                              y_lag[:self.nummot] * zeta), -2 * x_lag.T))) * self.EE * self.epsC + (self.C * -0.0003)
-            dh = mue * y_lag[:self.nummot] * zeta * -2 * \
+                                              y_lag_emb[:self.nummot] * zeta), -2 * x_lag_emb.T))) * self.EE * self.epsC + (self.C * -0.0003)
+            dh = mue * y_lag_emb[:self.nummot] * zeta * -2 * \
                 self.EE * self.epsC + (self.h * -0.0001)
 
             # publishing for homeokinesis

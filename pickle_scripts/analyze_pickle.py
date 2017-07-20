@@ -671,7 +671,7 @@ class Analyzer():
         plt.show()
 
     def time_series(self):
-        cut = 2000
+        cut = self.variableDict["numtimesteps"]
         x = self.variableDict["x"][:cut]
         y = self.variableDict["y"][:cut]
         xsi = self.variableDict["xsi"][:cut]
@@ -755,12 +755,13 @@ class Analyzer():
         plt.show()
 
     def model_matrix_plot(self):
-        onePlot = False
+        onePlot = True
 
         C = self.variableDict["C"]
         A = self.variableDict["A"]
         x = self.variableDict["x"]
         y = self.variableDict["y"]
+        embedding = self.variableDict["embedding"]
         x_std = np.std(x, axis=0)
         y_std = np.std(y, axis=0)
 
@@ -774,7 +775,7 @@ class Analyzer():
             sensor_names.extend([sensor + str(j)
                                  for j in range(sensor_dimensions[sensor])])
 
-        colors = cm.jet(np.linspace(0, 1, len(sensor_names)))
+        colors = cm.jet(np.linspace(0, 1, len(sensor_names) * embedding))
         #colors = ['r','r','r','b','b','b','k','k','k','k']
 
         cut_s = 0
@@ -792,7 +793,7 @@ class Analyzer():
                 tmp = [np.average(C[i:i + smoothing_window_C, mot, sen])
                        for i in range(C.shape[0] - smoothing_window_C)]
                 tmp = np.array(tmp[cut_s:cut_e]) / y_std[mot]
-                if(mot == 0):
+                if mot == 0 and embedding == 1:
                     plt.plot(tmp, label="C " +
                              sensor_names[sen], c=colors[sen], alpha=alpha_C)
                 else:
@@ -810,7 +811,7 @@ class Analyzer():
                 tmp = [np.average(A[i:i + smoothing_window_A, sen, mot])
                        for i in range(C.shape[0] - smoothing_window_A)]
                 tmp = np.array(tmp[cut_s:cut_e]) / x_std[sen]
-                if(mot == 0):
+                if mot == 0 and embedding == 1:
                     plt.plot(tmp, label="A " +
                              sensor_names[sen], c=colors[sen], alpha=alpha_A)
                 else:

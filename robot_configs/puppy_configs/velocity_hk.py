@@ -5,7 +5,6 @@ from robot_configs.puppy_configs.main_config import PuppyConfig
 def get_class():
     return PuppyConfigVelocity
 
-
 class PuppyConfigVelocity(PuppyConfig):
     def __init__(self, args):
         PuppyConfig.__init__(self, args)
