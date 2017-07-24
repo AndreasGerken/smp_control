@@ -2,11 +2,14 @@ import cPickle as pickle
 import numpy as np
 import warnings
 
-# TODO: Implement
-
 
 class Pickler():
-    def __init__(self, source_instance, numtimesteps):
+    """ This class takes an instance of another class and logs states of the class variables.
+    The variable names can be added with add_once_variables and the function save_pickle extracts those variables from the instance.
+    If variables should be logged multiple times, numtimesteps has to be set to the number of expected measurements and the variables have to be added with add_frequent_variables.
+    """
+
+    def __init__(self, source_instance, numtimesteps=None):
         self.variableNamesOnce = []
         self.variableNamesFrequent = []
 
@@ -77,7 +80,7 @@ class Pickler():
         for key in self.variableNamesFrequent:
             self.frequent_buffer[key][i] = self.source_dict[key]
 
-    def save_pickle(self, pickle_file_name):
+    def save_pickle(self, pickle_file_name, verbose=True):
         """ This function collects the data from the instance and from the buffer
         and saves them to a pickle file. The saved variable is a dictionary."""
 
@@ -93,4 +96,5 @@ class Pickler():
         once_dict.update(frequent_dict)
         pickle.dump(once_dict, open(pickle_file_name, 'wb'))
 
-        print "Variables saved in pickle file once: [%s] freq: [%s] filename = %s" % (', '.join(self.variableNamesOnce), ', '.join(self.variableNamesFrequent), pickle_file_name)
+        if verbose:
+            print "--------------\nVariables saved in pickle file\nVariables once: [%s]\nVariables frequent: [%s]\nfilename = %s\n--------------" % (', '.join(self.variableNamesOnce), ', '.join(self.variableNamesFrequent), pickle_file_name)

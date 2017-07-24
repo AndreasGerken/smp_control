@@ -7,6 +7,7 @@ import signal
 import imp
 import sys
 import time
+import os
 
 # ros imports
 import rospy
@@ -85,7 +86,6 @@ class SMP_control(smp_thread_ros):
         self.y = np.zeros((self.numtimesteps, self.nummot))
 
         # learning variables
-        # TODO: Check if all nself.EEded
 
         # Model
         if self.robot.use_sensors_for_model:
@@ -110,14 +110,16 @@ class SMP_control(smp_thread_ros):
         self.v_avg = np.zeros((self.numsen_embedding, 1))
         self.xsi = np.zeros((self.numsen, 1))
 
-        self.xsiAvg = 0
-        self.xsiAvgSmooth = 0.01
+        self.xsi_avg = 0
+        self.xsi_avg_smooth = 0.01
 
         self.pickler = Pickler(self, self.numtimesteps)
         self.pickler.add_once_variables(
-            ['numtimesteps','x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding'])
+            ['numtimesteps','cnt_main','x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding', 'pickle_name'])
         self.pickler.add_frequent_variables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
-        self.pickleName = 'pickles/newest.pickle'
+        self.pickle_name = ''
+        self.pickle_name_newest = 'pickles/newest.pickle'
+        self.pickle_folder = 'pickles'
 
         self.msg_xsi = Float32MultiArray()
 
@@ -218,10 +220,6 @@ class SMP_control(smp_thread_ros):
         if self.cnt_main <= self.lag + self.embedding:
             return
 
-        # TODO:why?
-        #self.msg_inputs.data = self.x[:,now].flatten().tolist()
-        # self.pub["_lpzros_x"].publish(self.msg_inputs)
-
         # local variables
         # results in lagged (numsen_embedding, 1) vector
         x_lag_emb = np.atleast_2d(
@@ -250,8 +248,8 @@ class SMP_control(smp_thread_ros):
         # clipping prevents overflow in unstable episodes
         self.xsi = np.clip(
             x_fut - (np.dot(self.A, y_lag_emb) + self.b), -1e+38, 1e+38)
-        self.xsiAvg = np.sum(np.abs(self.xsi)) * self.xsiAvgSmooth + \
-            (1 - self.xsiAvgSmooth) * self.xsiAvg
+        self.xsi_avg = np.sum(np.abs(self.xsi)) * self.xsi_avg_smooth + \
+            (1 - self.xsi_avg_smooth) * self.xsi_avg
 
         self.msg_xsi.data = self.xsi.flatten().tolist()
         self.pub['_lpzros_xsi'].publish(self.msg_xsi)
@@ -261,7 +259,7 @@ class SMP_control(smp_thread_ros):
             print "y %s\t" % str(y_lag_emb)
             print 'g_prime\t', g_prime
             print 'g_prime_inv\t', g_prime_inv
-            print "Xsi Average %f\t" % self.xsiAvg
+            print "Xsi Average %f\t" % self.xsi_avg
 
         """
         forward model learning
@@ -300,7 +298,6 @@ class SMP_control(smp_thread_ros):
             mue = np.dot(np.linalg.pinv(
                 np.dot(self.C, self.C.T) + lambda_), zeta)
 
-            # TODO: why?
             # after C inverse
             v = np.dot(self.C.T, mue)
             v = np.clip(np.dot(self.C.T, mue), -1., 1.)
@@ -334,7 +331,7 @@ class SMP_control(smp_thread_ros):
 
     def exit_loop(self):
         """ Ends the loop and saves the data to a pickle file """
-        self.pickler.save_pickle(self.pickleName)
+        self._save_pickle()
         self.isrunning = False
 
         if hasattr(self.robot.__class__, 'before_exit') and callable(getattr(self.robot.__class__, 'before_exit')):
@@ -343,6 +340,21 @@ class SMP_control(smp_thread_ros):
         # generates problem with batch mode
         rospy.signal_shutdown('ending')
         print('ending')
+
+    def _save_pickle(self):
+        id = 0
+        while True:
+            self.pickle_name = self.pickle_folder + "/recording_eC%.2f_eA%.2f_c%.2f_id%d.pickle" % (self.epsC, self.epsA, self.creativity, id)
+
+            if not os.path.exists(self.pickle_name):
+                self.pickler.save_pickle(self.pickle_name)
+                self.pickler.save_pickle(self.pickle_name_newest, verbose=False)
+                return
+
+            # increment id and try again
+            id += 1
+            if id == 10000:
+                raise Exception("While searching for an id to save the pickle 10000 was reached. Did you really do so many?")
 
 
 def dynamic_importer(name):
@@ -377,7 +389,7 @@ def dynamic_importer(name):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='TODO')
+    parser = argparse.ArgumentParser(description='Implementation of the self exploration algorithms homeostasis and homeokinesis')
     parser.add_argument('file')
     parser.add_argument('-m', '--mode', type=str,
                         help='select mode [hs] from ' + str(SMP_control._modes), default='hk')
