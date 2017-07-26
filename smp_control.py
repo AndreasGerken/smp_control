@@ -117,8 +117,9 @@ class SMP_control(smp_thread_ros):
         self.pickler.add_once_variables(
             ['numtimesteps','cnt_main','x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding', 'pickle_name'])
         self.pickler.add_frequent_variables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
-        self.pickle_name = ''
-        self.pickle_name_newest = 'pickles/newest.pickle'
+
+        self.pickle_name = args.pickle_name
+        self.pickle_name_newest = 'newest.pickle'
         self.pickle_folder = 'pickles'
 
         self.msg_xsi = Float32MultiArray()
@@ -344,11 +345,12 @@ class SMP_control(smp_thread_ros):
     def _save_pickle(self):
         id = 0
         while True:
-            self.pickle_name = self.pickle_folder + "/recording_eC%.2f_eA%.2f_c%.2f_id%d.pickle" % (self.epsC, self.epsA, self.creativity, id)
+            if self.pickle_name == "":
+                self.pickle_name = "recording_eC%.2f_eA%.2f_c%.2f_id%d.pickle" % (self.epsC, self.epsA, self.creativity, id)
 
             if not os.path.exists(self.pickle_name):
-                self.pickler.save_pickle(self.pickle_name)
-                self.pickler.save_pickle(self.pickle_name_newest, verbose=False)
+                self.pickler.save_pickle(self.pickle_folder + "/" + self.pickle_name)
+                self.pickler.save_pickle(self.pickle_folder + "/" + self.pickle_name_newest, verbose=False)
                 return
 
             # increment id and try again
@@ -405,6 +407,7 @@ if __name__ == '__main__':
                         help='creativity', default=0.5)
     parser.add_argument('-v', '--verbose', type=bool,
                         help='print many motor and sensor commands', default=False)
+    parser.add_argument("-pickle", "--pickle_name", type=str, default="")
     args = parser.parse_args()
 
     # import the robot class

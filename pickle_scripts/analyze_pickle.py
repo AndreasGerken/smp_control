@@ -40,19 +40,19 @@ class Analyzer():
             self.filename = self.args.filename
 
         try:
-            self.variableDict = pickle.load(open(self.filename, "rb"))
+            self.variable_dict = pickle.load(open(self.filename, "rb"))
         except Exception:
             raise Exception("File not found, use -f and the filepath")
 
-        # if self.variableDict["dataversion"] == 1:
+        # if self.variable_dict["dataversion"] == 1:
         #    warnings.warn("Pickle from V1, xsi might not be correct")
 
-        # if self.variableDict["dataversion"] >= 9:
-        #    self.hz = self.variableDict["hz"]
-        self.motorCommands = self.variableDict["y"]
-        self.sensorValues = self.variableDict["x"]
-        self.timesteps = self.motorCommands.shape[0]
-        self.nummot = self.motorCommands.shape[1]
+        # if self.variable_dict["dataversion"] >= 9:
+        #    self.hz = self.variable_dict["hz"]
+        self.motor_commands = self.variable_dict["y"]
+        self.sensor_values = self.variable_dict["x"]
+        self.timesteps = self.motor_commands.shape[0]
+        self.nummot = self.motor_commands.shape[1]
 
         self.windowsize = self.args.windowsize
         self.embsize = self.args.embsize
@@ -74,25 +74,25 @@ class Analyzer():
     def correlation_func(self):
         loopsteps = self.timesteps - self.windowsize
 
-        #self.motorCommands += np.random.normal(size=self.motorCommands.shape) * 0.1
+        #self.motor_commands += np.random.normal(size=self.motor_commands.shape) * 0.1
 
         # testdata
-        # self.motorCommands = np.arange(20).reshape(10,2)
-        # print self.motorCommands
+        # self.motor_commands = np.arange(20).reshape(10,2)
+        # print self.motor_commands
 
-        # print(len(self.motorCommands))
+        # print(len(self.motor_commands))
 
         allCorrelations = np.zeros((loopsteps, self.nummot, self.nummot))
         allAverageSquaredCorrelations = np.zeros((loopsteps, 6))
 
-        correlationsGlobal = np.cov(self.motorCommands.T)
+        correlationsGlobal = np.cov(self.motor_commands.T)
         print correlationsGlobal
 
-        for i in range(len(self.motorCommands) - self.windowsize):
+        for i in range(len(self.motor_commands) - self.windowsize):
             # use only the latest step of the buffer but all motor commands
             # shape = (timestep, motorChannel, buffer)
 
-            window = self.motorCommands[i:i + self.windowsize, :]
+            window = self.motor_commands[i:i + self.windowsize, :]
             # print "windooriginal", window
 
             windowfunction = np.hamming(self.windowsize)
@@ -188,18 +188,18 @@ class Analyzer():
     def prepare_data_for_learning(self):
         testDataLimit = 4 * self.timesteps / 5
 
-        motoremb = np.array([self.motorCommands[i:i + self.embsize].flatten()
+        motoremb = np.array([self.motor_commands[i:i + self.embsize].flatten()
                              for i in range(0, testDataLimit - self.embsize)])
-        motorembtest = np.array([self.motorCommands[i:i + self.embsize].flatten()
+        motorembtest = np.array([self.motor_commands[i:i + self.embsize].flatten()
                                  for i in range(testDataLimit, self.timesteps - self.embsize)])
-        #self.sensorValues = self.sensorValues[:,3:]
+        #self.sensor_values = self.sensor_values[:,3:]
 
-        # motoremb = self.motorCommands[:testDataLimit]
+        # motoremb = self.motor_commands[:testDataLimit]
 
         self.trainingData = {
-            "motor": motoremb, "sensor": self.sensorValues[self.embsize:testDataLimit]}
+            "motor": motoremb, "sensor": self.sensor_values[self.embsize:testDataLimit]}
         self.testData = {"motor": motorembtest,
-                         "sensor": self.sensorValues[testDataLimit + self.embsize:]}
+                         "sensor": self.sensor_values[testDataLimit + self.embsize:]}
 
     def learn_motor_sensor_gmm(self):
         """
@@ -243,8 +243,8 @@ class Analyzer():
         fig = plt.figure()
         for lag in range(1, 6):
 
-            mot_lag = self.motorCommands[0:-1 * lag]
-            sen_lag = self.sensorValues[lag:]
+            mot_lag = self.motor_commands[0:-1 * lag]
+            sen_lag = self.sensor_values[lag:]
             n = mot_lag.shape[0]
             nummot = mot_lag.shape[1]
             numsen = sen_lag.shape[1]
@@ -281,8 +281,8 @@ class Analyzer():
         fig = plt.figure()
         for lag in range(1, 6):
 
-            mot_lag = self.motorCommands[0:-1 * lag]
-            sen_lag = self.sensorValues[lag:]
+            mot_lag = self.motor_commands[0:-1 * lag]
+            sen_lag = self.sensor_values[lag:]
             n = mot_lag.shape[0]
             nummot = mot_lag.shape[1]
             numsen = sen_lag.shape[1]
@@ -431,7 +431,7 @@ class Analyzer():
             partS = part * points_per_plot
             partE = (part + 1) * points_per_plot
             combinedData = np.hstack(
-                (self.motorCommands[partS:partE, :], self.sensorValues[partS:partE, :]))
+                (self.motor_commands[partS:partE, :], self.sensor_values[partS:partE, :]))
 
             df = pd.DataFrame(combinedData, columns=[
                               'm1', 'm2', 'm3', 'm4', 's1', 's2', 's3', 's4', 's5', 's6'])
@@ -453,7 +453,7 @@ class Analyzer():
     def spectogram_func(self):
         loopsteps = self.timesteps - self.windowsize
 
-        sensors = self.sensorValues[...]
+        sensors = self.sensor_values[...]
         self.numsen = sensors.shape[1]
         s = sensors
 
@@ -461,8 +461,8 @@ class Analyzer():
 
         import scipy.signal as sig
 
-        m = self.motorCommands
-        s = self.sensorValues
+        m = self.motor_commands
+        s = self.sensor_values
 
         Mspecs = [sig.spectrogram(m[:, i], fs=20.0, nperseg=32, nfft=32)
                   for i in range(self.nummot)]
@@ -526,16 +526,16 @@ class Analyzer():
         distance_array = np.zeros((self.timesteps, 6))
         windowfunction = np.hamming(self.windowsize)
 
-        self.sensorValues -= np.mean(self.sensorValues, axis=0)
+        self.sensor_values -= np.mean(self.sensor_values, axis=0)
         for i in range(0, self.timesteps - self.windowsize):
             start = i
             end = i + self.windowsize
 
-            min_x = np.min(self.sensorValues[start:end, :], axis=0)
-            max_x = np.max(self.sensorValues[start:end, :], axis=0)
+            min_x = np.min(self.sensor_values[start:end, :], axis=0)
+            max_x = np.max(self.sensor_values[start:end, :], axis=0)
             distance_array[i, :] = max_x - min_x
-        # plt.plot(self.sensorValues[:,1])
-        # plt.plot(self.sensorValues[:,1])
+        # plt.plot(self.sensor_values[:,1])
+        # plt.plot(self.sensor_values[:,1])
         #plt.plot(distance_array, self.hz[self.windowsize/2: self.timesteps - self.windowsize/2])
         dist_avg = [np.average(distance_array[i:i + 60, :], axis=0)
                     for i in range(self.timesteps - 60)]
@@ -547,7 +547,7 @@ class Analyzer():
     def activity_plot2(self):
 
         windowfunction = np.hamming(self.windowsize)
-        sv_abs = np.sum(np.abs(self.sensorValues), axis=1)
+        sv_abs = np.sum(np.abs(self.sensor_values), axis=1)
         sv_abs[0] = sv_abs[1]
         x = np.linspace(0, 1, self.timesteps)
 
@@ -573,8 +573,8 @@ class Analyzer():
         i = 0
         fig = plt.figure(self.filename)
 
-        motorGlobal = self.motorCommands[:, 0]
-        sensorGlobal = self.sensorValues
+        motorGlobal = self.motor_commands[:, 0]
+        sensorGlobal = self.sensor_values
 
         datax = motorGlobal[i:i + 100]
         datay1 = sensorGlobal[i:i + 100, 0]
@@ -632,8 +632,8 @@ class Analyzer():
         plt.show()
 
     def time_series_smoothing(self):
-        x = self.variableDict["x"]
-        y = self.variableDict["y"]
+        x = self.variable_dict["x"]
+        y = self.variable_dict["y"]
         sensors = 3
         fig = plt.figure()
         for i in range(sensors):
@@ -643,40 +643,79 @@ class Analyzer():
         plt.show()
 
     def details(self):
-        epsA = self.variableDict["epsA"]
-        epsC = self.variableDict["epsC"]
-        creativity = self.variableDict["creativity"]
-        x = self.variableDict["x"]
-        y = self.variableDict["y"]
-        xsi = self.variableDict["xsi"]
-        ee = self.variableDict["EE"]
+        epsA = self.variable_dict["epsA"]
+        epsC = self.variable_dict["epsC"]
+        creativity = self.variable_dict["creativity"]
+        x = self.variable_dict["x"]
+        y = self.variable_dict["y"]
+        xsi = self.variable_dict["xsi"]
+        ee = self.variable_dict["EE"]
         print "epsA\t", epsA
         print "epsC\t", epsC
         print "Creativity\t", creativity
 
     def step_sweep(self):
-        x = self.variableDict["x"]
-        y = self.variableDict["y"]
+        # TODO: Save these in the pickle
+        step_length = 125
+        cut_response = 50
+        reset_length = 125
+        repeat_step = 5
+        step_size = 0.333 # 0.333 corresponds to 30 deg
+
+        cycle_length = step_length + reset_length
+        cycle_max = self.variable_dict["numtimesteps"] / cycle_length
+        sweep_angle_total = 2. - step_size
+        step_per_cycle = sweep_angle_total / cycle_max
+
+        x = self.variable_dict["x"]
+        y = self.variable_dict["y"]
         x -= np.mean(x, axis=0)
         x /= np.std(x, axis=0)
-        x = np.abs(x)
-        f, axarr = plt.subplots(1, 1)
-        colors = cm.Greys(np.linspace(0, 1, 19))
-        for i in range(19):
-            axarr.plot(np.average(x[i * 50:i * 50 + 25], axis=1), c=colors[i])
+        #x = np.abs(x)
 
-            plt.xticks(np.arange(0, 25, 1.0))
-            #axarr[0].plot(y[i*50:i*50 + 20], c= colors[i])
-            #plt.xticks(np.arange(0, 20, 1.0))
+        responses = np.zeros((cycle_max, cut_response, x.shape[1]))
+
+        colors = cm.Greys(np.linspace(0, 1, cycle_max))
+        colors = cm.viridis(np.linspace(0, 1, cycle_max))
+        colors = cm.cool(np.linspace(0, 1, cycle_max))
+
+        for i in range(cycle_max):
+            responses[i] = x[i * cycle_length + reset_length: i * cycle_length + reset_length + cut_response]
+            responses[i] -= np.average(responses[i,0:5])
+        # plotting
+
+        # plot exemplary step responses
+
+        # f, axarr = plt.subplots(1,cycle_max / 4)
+        # for i in range(cycle_max):
+        #     if i%4==0:
+        #         axarr[i/4].plot(responses[i/4,:, 1])
+        #
+        f, axarr = plt.subplots(1, 1)
+
+
+        for i in range(1, cycle_max):
+            if i == 1 or i == cycle_max - 1:
+                if i == 1:
+                    text = "-180"
+                else:
+                    text = "180"
+                axarr.plot(np.average(np.abs(responses[i]), axis = 1)  + i, c=colors[i], lw=1, alpha=1, label=text)
+            else:
+                axarr.plot(np.average(np.abs(responses[i]), axis = 1)  + i, c=colors[i], lw=1, alpha=1)
+
+            plt.xticks(np.arange(0, cut_response, 1.0))
+
+        plt.legend()
         plt.show()
 
     def time_series(self):
-        cut = self.variableDict["numtimesteps"]
-        x = self.variableDict["x"][:cut]
-        y = self.variableDict["y"][:cut]
-        xsi = self.variableDict["xsi"][:cut]
-        ee = self.variableDict["EE"][:cut]
-        # print self.variableDict["robot.sensor_dimensions"]
+        cut = self.variable_dict["numtimesteps"]
+        x = self.variable_dict["x"][:cut]
+        y = self.variable_dict["y"][:cut]
+        xsi = self.variable_dict["xsi"][:cut]
+        ee = self.variable_dict["EE"][:cut]
+        # print self.variable_dict["robot.sensor_dimensions"]
 
         f, axarr = plt.subplots(4, 1)
 
@@ -707,9 +746,9 @@ class Analyzer():
 
     def split_sensors_effects_smooth(self):
         # TODO: not functional
-        # C=self.variableDict["C"]
-        # x=self.variableDict["x"]
-        # h=self.variableDict["h"]
+        # C=self.variable_dict["C"]
+        # x=self.variable_dict["x"]
+        # h=self.variable_dict["h"]
         # sensors=3
         # yp = np.zeros((x.shape[0],sensors + 1))
         #
@@ -735,15 +774,15 @@ class Analyzer():
         return
 
     def model_matrix_plot_smooth(self):
-        C = self.variableDict["C"]
-        A = self.variableDict["A"]
+        C = self.variable_dict["C"]
+        A = self.variable_dict["A"]
         sensors = 3
 
         fig = plt.figure()
         ax = None
         for j in range(sensors):
-            abs_max = np.std(self.variableDict["x"][:, j + sensors * 2])
-            #abs_max = np.max(np.abs(self.variableDict["x"][:,j+sensors*2]))
+            abs_max = np.std(self.variable_dict["x"][:, j + sensors * 2])
+            #abs_max = np.max(np.abs(self.variable_dict["x"][:,j+sensors*2]))
             ax = fig.add_subplot(1, sensors, j + 1, sharey=ax)
             plt.plot(C[:, 0, j::sensors] * abs_max)
             # plt.legend()
@@ -757,16 +796,16 @@ class Analyzer():
     def model_matrix_plot(self):
         onePlot = True
 
-        C = self.variableDict["C"]
-        A = self.variableDict["A"]
-        x = self.variableDict["x"]
-        y = self.variableDict["y"]
-        embedding = self.variableDict["embedding"]
+        C = self.variable_dict["C"]
+        A = self.variable_dict["A"]
+        x = self.variable_dict["x"]
+        y = self.variable_dict["y"]
+        embedding = self.variable_dict["embedding"]
         x_std = np.std(x, axis=0)
         y_std = np.std(y, axis=0)
 
-        use_sensors = self.variableDict["robot.use_sensors"]
-        sensor_dimensions = self.variableDict["robot.sensor_dimensions"]
+        use_sensors = self.variable_dict["robot.use_sensors"]
+        sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
 
         # create list of sensor names
         sensor_names = []
@@ -824,10 +863,10 @@ class Analyzer():
         import matplotlib.animation as animation
         fig = plt.figure(self.filename)
 
-        A = self.variableDict["A"]
-        C = self.variableDict["C"]
-        b = self.variableDict["b"]
-        h = self.variableDict["h"]
+        A = self.variable_dict["A"]
+        C = self.variable_dict["C"]
+        b = self.variable_dict["b"]
+        h = self.variable_dict["h"]
         print C.shape
         i = 0
         plt.subplot(121)
@@ -893,10 +932,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
         description="lpzrobots ROS controller: test homeostatic/kinetic learning")
+
+    parser.add_argument("filename")
+
     parser.add_argument("-m", "--mode", type=str,
                         help=str(function_dict.keys()))
-    parser.add_argument("-f", "--filename", type=str,
-                        help="filename (no default)", nargs='?')
+
     parser.add_argument("-r", "--randomFile", action="store_true")
     parser.add_argument("-ham", "--hamming", action="store_true")
     parser.add_argument("-w", "--windowsize", type=int,

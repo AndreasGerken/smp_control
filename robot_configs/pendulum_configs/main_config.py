@@ -15,7 +15,7 @@ class PendulumConfig(RobotConfig):
         RobotConfig.__init__(self)
 
         self.pub_names = {
-            "/homeostasis_motor": [Float32MultiArray],
+            "/pendulumMotor": [Float32MultiArray],
         }
         self.sub_names = {
             "/imu/data": [Imu, self.cb_imu],
@@ -27,6 +27,7 @@ class PendulumConfig(RobotConfig):
                                   "motor_torque_abs": 1, "poti": 1, "poti_d": 1, "poti_integral": 1, "current": 1}
 
         self.smoothings = [0., 0.3, 0.5, 0.8, 0.9, 0.95, 0.99]
+        self.smoothings = [0,]
 
         #self.smoothings = [0.]
         self.smoothing_length = len(self.smoothings)
@@ -36,16 +37,17 @@ class PendulumConfig(RobotConfig):
         self.numsen = 0
 
         self.set_sensors(['poti', 'poti_d', 'poti_integral'])
+        self.set_sensors(['poti'])
         #self.use_sensors = ['orient', 'motor_pos', 'gyr', 'acc']
 
         #self.numsen = np.sum([sensor_dimensions[sensor] for sensor in self.use_sensors])
         self.nummot = 1
-        self.lag = 6
-        self.embedding = 1
+        self.lag = 1
+        self.embedding = 6
         self.output_gain = 150
 
         self.learning_enabled = True
-        self.use_sensors_for_model = False
+        self.use_sensors_for_model = True
 
         #self.control_mode = control_modes[args.control_mode]
 
@@ -144,4 +146,4 @@ class PendulumConfig(RobotConfig):
 
         # write the commands to the message and publish them
         self.msg_motors.data = self.motor_torque_command * self.output_gain
-        self.smp_control.pub["_homeostasis_motor"].publish(self.msg_motors)
+        self.smp_control.pub["_pendulumMotor"].publish(self.msg_motors)

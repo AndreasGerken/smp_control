@@ -22,11 +22,27 @@ class PuppyConfigStepSweep(PuppyConfig):
         self.learning_enabled = False
         self.use_sensors_for_model = False
 
+        self.step_length = 125
+        self.reset_length = 125
+        self.step_size = 0.333 # 0.333 corresponds to 30 deg
+
     def send_output(self, algorithm_output):
+        cycle_length = self.step_length + self.reset_length
+        cycle_max = self.smp_control.numtimesteps / cycle_length
+        sweep_angle_total = 2. - self.step_size
+        step_per_cycle = sweep_angle_total / cycle_max
+
+        cycle_number = self.smp_control.cnt_main / cycle_length
+        position_in_cycle = self.smp_control.cnt_main % cycle_length
+
+        if position_in_cycle > self.reset_length:
+            position = step_per_cycle * cycle_number + self.step_size - 1.
+        else:
+            position = step_per_cycle * cycle_number - 1.
+
         algorithm_output = np.array(
-            [(self.smp_control.cnt_main * 1.) / (1. * self.smp_control.numtimesteps)] * 4) * 2 - 1
-        if(self.smp_control.cnt_main % 50 < 25):
-            algorithm_output += np.ones_like(algorithm_output) * 0.2
+            [position] * 4)
+
         self.smp_control.y[self.smp_control.cnt_main, :] = algorithm_output
 
         # velocity control

@@ -2,9 +2,9 @@
 from robot_configs.puppy_configs.main_config import PuppyConfig
 
 def get_class():
-    return PuppyConfigVelocity
+    return PendulumTorqueHK
 
-class PuppyConfigVelocity(PuppyConfig):
+class PendulumTorqueHK(PuppyConfig):
     def __init__(self,args):
         PuppyConfig.__init__(self,args)
 
