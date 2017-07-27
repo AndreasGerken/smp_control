@@ -115,7 +115,7 @@ class SMP_control(smp_thread_ros):
 
         self.pickler = Pickler(self, self.numtimesteps)
         self.pickler.add_once_variables(
-            ['numtimesteps','cnt_main','x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding', 'pickle_name'])
+            ['numtimesteps', 'cnt_main', 'x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding', 'pickle_name'])
         self.pickler.add_frequent_variables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
 
         self.pickle_name = args.pickle_name
@@ -145,9 +145,9 @@ class SMP_control(smp_thread_ros):
 
             self.get_and_check_input()
 
-            self.compute_new_output()
-
             if self.robot.learning_enabled:
+                self.compute_new_output()
+
                 self.learning_step()
 
             self.check_and_send_output()
@@ -186,7 +186,7 @@ class SMP_control(smp_thread_ros):
         if self.cnt_main < self.embedding:
             return
         x_fut_emb = self.x[self.cnt_main -
-                       self.embedding: self.cnt_main, :].flatten()
+                           self.embedding: self.cnt_main, :].flatten()
         Cx_fut = np.dot(self.C, x_fut_emb).reshape((self.nummot, 1))
 
         self.y[self.cnt_main, :] = self.g(Cx_fut + self.h)[:, 0]
@@ -224,7 +224,7 @@ class SMP_control(smp_thread_ros):
         # local variables
         # results in lagged (numsen_embedding, 1) vector
         x_lag_emb = np.atleast_2d(
-            self.x[self.cnt_main - self.lag - self.embedding : self.cnt_main - self.lag, :].flatten()).T
+            self.x[self.cnt_main - self.lag - self.embedding: self.cnt_main - self.lag, :].flatten()).T
 
         # results in (numsen,1) vector
         x_fut = np.atleast_2d(self.x[self.cnt_main, :].flatten()).T
@@ -266,7 +266,8 @@ class SMP_control(smp_thread_ros):
         forward model learning
         """
         # cooling of the modelmatrix
-        self.A += self.epsA * np.dot(self.xsi, y_lag_emb.T) + (self.A * -0.0003)
+        self.A += self.epsA * \
+            np.dot(self.xsi, y_lag_emb.T) + (self.A * -0.0003)
         self.b += self.epsA * self.xsi + (self.b * -0.0001)
 
         """
@@ -332,8 +333,8 @@ class SMP_control(smp_thread_ros):
 
     def exit_loop(self):
         """ Ends the loop and saves the data to a pickle file """
-        self._save_pickle()
         self.isrunning = False
+        self._save_pickle()
 
         if hasattr(self.robot.__class__, 'before_exit') and callable(getattr(self.robot.__class__, 'before_exit')):
             self.robot.before_exit()
@@ -343,20 +344,30 @@ class SMP_control(smp_thread_ros):
         print('ending')
 
     def _save_pickle(self):
+        if self.cnt_main != self.numtimesteps:
+            user_input = raw_input(
+                "The run was not complete, do you still want to save it? (Y/N)")
+            if not user_input is "Y":
+                return
+
         id = 0
         while True:
             if self.pickle_name == "":
-                self.pickle_name = "recording_eC%.2f_eA%.2f_c%.2f_id%d.pickle" % (self.epsC, self.epsA, self.creativity, id)
+                self.pickle_name = "recording_eC%.2f_eA%.2f_c%.2f_id%d.pickle" % (
+                    self.epsC, self.epsA, self.creativity, id)
 
             if not os.path.exists(self.pickle_name):
-                self.pickler.save_pickle(self.pickle_folder + "/" + self.pickle_name)
-                self.pickler.save_pickle(self.pickle_folder + "/" + self.pickle_name_newest, verbose=False)
+                self.pickler.save_pickle(
+                    self.pickle_folder + "/" + self.pickle_name)
+                self.pickler.save_pickle(
+                    self.pickle_folder + "/" + self.pickle_name_newest, verbose=False)
                 return
 
             # increment id and try again
             id += 1
             if id == 10000:
-                raise Exception("While searching for an id to save the pickle 10000 was reached. Did you really do so many?")
+                raise Exception(
+                    "While searching for an id to save the pickle 10000 was reached. Did you really do so many?")
 
 
 def dynamic_importer(name):
@@ -391,7 +402,8 @@ def dynamic_importer(name):
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description='Implementation of the self exploration algorithms homeostasis and homeokinesis')
+    parser = argparse.ArgumentParser(
+        description='Implementation of the self exploration algorithms homeostasis and homeokinesis')
     parser.add_argument('file')
     parser.add_argument('-m', '--mode', type=str,
                         help='select mode [hs] from ' + str(SMP_control._modes), default='hk')

@@ -655,58 +655,125 @@ class Analyzer():
         print "Creativity\t", creativity
 
     def step_sweep(self):
-        # TODO: Save these in the pickle
-        step_length = 125
+        if not 'robot.step_length' in self.variable_dict:
+            warnings.warn("this pickle file was not recorded in the step sweep mode")
+
+        reset_length = self.variable_dict['robot.reset_length']
+        step_length = self.variable_dict['robot.step_length']
+        repeat_step = self.variable_dict['robot.repeat_step']
+        step_size = self.variable_dict['robot.step_size']
+        use_sensors = self.variable_dict['robot.use_sensors']
+        sensor_dimensions = self.variable_dict['robot.sensor_dimensions']
+
+        # create list of sensor names
+        sensor_names = []
+        for sensor in use_sensors:
+            # repeat the sensor name with an identifier as often as the sensor has dimensions
+            sensor_names.extend([sensor + str(j)
+                                 for j in range(sensor_dimensions[sensor])])
+
         cut_response = 50
-        reset_length = 125
-        repeat_step = 5
-        step_size = 0.333 # 0.333 corresponds to 30 deg
 
         cycle_length = step_length + reset_length
         cycle_max = self.variable_dict["numtimesteps"] / cycle_length
         sweep_angle_total = 2. - step_size
-        step_per_cycle = sweep_angle_total / cycle_max
+        angle_per_step = sweep_angle_total / cycle_max
+        steps_max = cycle_max / repeat_step
 
         x = self.variable_dict["x"]
         y = self.variable_dict["y"]
         x -= np.mean(x, axis=0)
-        x /= np.std(x, axis=0)
+        #x /= np.std(x, axis=all)
         #x = np.abs(x)
 
         responses = np.zeros((cycle_max, cut_response, x.shape[1]))
+        avg_responses = np.zeros((steps_max, cut_response, x.shape[1]))
+        std_responses = np.zeros((steps_max, cut_response, x.shape[1]))
 
         colors = cm.Greys(np.linspace(0, 1, cycle_max))
         colors = cm.viridis(np.linspace(0, 1, cycle_max))
-        colors = cm.cool(np.linspace(0, 1, cycle_max))
+        colors = cm.cool(np.linspace(0, 1, steps_max))
 
         for i in range(cycle_max):
             responses[i] = x[i * cycle_length + reset_length: i * cycle_length + reset_length + cut_response]
-            responses[i] -= np.average(responses[i,0:5])
+            responses[i] -= np.average(responses[i,:5]) # bring the signal of the first timesteps to the center
+
+        for i in range(steps_max):
+            avg_responses[i] = np.average(responses[i * repeat_step: (i+1) * repeat_step], axis = 0)
+            std_responses[i] = np.std(responses[i * repeat_step:(i+1)*repeat_step], axis = 0)
+            avg_responses[i] -= np.average(avg_responses[i,:5], axis=0) # bring the signal of the first timesteps to the center
+
+
         # plotting
+        f, axarr = plt.subplots(3, 2)
 
-        # plot exemplary step responses
+        line_alpha = 0.5
+        line_offset = 3.
 
-        # f, axarr = plt.subplots(1,cycle_max / 4)
-        # for i in range(cycle_max):
-        #     if i%4==0:
-        #         axarr[i/4].plot(responses[i/4,:, 1])
-        #
-        f, axarr = plt.subplots(1, 1)
+        line_offset = 0.
+        for i in range(steps_max):
+            j = steps_max - i - 1
 
-
-        for i in range(1, cycle_max):
-            if i == 1 or i == cycle_max - 1:
-                if i == 1:
-                    text = "-180"
-                else:
-                    text = "180"
-                axarr.plot(np.average(np.abs(responses[i]), axis = 1)  + i, c=colors[i], lw=1, alpha=1, label=text)
+            if j == 1:
+                text = "-180"
+            elif j == steps_max - 1:
+                text = "180"
             else:
-                axarr.plot(np.average(np.abs(responses[i]), axis = 1)  + i, c=colors[i], lw=1, alpha=1)
+                text = None
 
-            plt.xticks(np.arange(0, cut_response, 1.0))
+            for dim in range(6):
+                x = range(cut_response)
+                y_avg = avg_responses[j,:,dim]
+                y_std = std_responses[j,:,dim]
+                y_offset = y_avg + j * line_offset
+                y_low = y_offset - y_std
+                y_high = y_offset + y_std
+                ax = axarr[dim / 2, dim % 2]
 
-        plt.legend()
+                #ax.plot(x, y_low, c=colors[i], lw=1, alpha=line_alpha, label=text)
+                #ax.plot(x, y_high, c=colors[i], lw=1, alpha=line_alpha, label=text)
+
+                ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=line_alpha, label=text)
+                ax.set_ylabel(sensor_names[dim])
+                ax.set_xlabel("ms")
+                #plt.xticks(np.arange(0, cut_response, 1.0))
+
+                #axarr[1].plot(np.average(np.abs(responses[i,:,3:]), axis = 1)  + (i / repeat_step) * line_offset, c=colors[i], lw=1.5, alpha=line_alpha, label=text)
+                #plt.xticks(np.arange(0, cut_response, 1.0))
+
+                axarr[dim/2, dim%2].legend()
+
+        f, ax = plt.subplots(1,1)
+        line_alpha = 0.
+        fill_alpha = 0.4
+        for i in range(steps_max):
+            j = steps_max - i - 1
+
+            if j == 1:
+                text = "180"
+            elif j == steps_max - 1:
+                text = "-180"
+            else:
+                text = None
+
+            dim = 1
+            x = range(cut_response)
+            y_avg = avg_responses[j,:,dim]
+            y_std = std_responses[j,:,dim]
+            y_offset = y_avg + j * line_offset
+            y_low = y_offset - y_std
+            y_high = y_offset + y_std
+
+            ax.plot(x, y_low, c=colors[j], lw=1, alpha=line_alpha)
+            ax.plot(x, y_high, c=colors[j], lw=1, alpha=line_alpha)
+
+            ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=fill_alpha, label=text)
+
+            #ax.set_ylabel(sensor_names[dim])
+            ax.set_ylabel("m/s^2")
+            ax.set_xlabel("ms")
+        ax.set_title("Acceleration - Y")
+        ax.legend()
         plt.show()
 
     def time_series(self):

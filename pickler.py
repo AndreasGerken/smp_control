@@ -53,7 +53,9 @@ class Pickler():
 
         # check if all variableNames are available in source instance
         for key in variableList:
-            assert key in self.source_dict.keys(), "The key '%s' was not in the source dict" % (key)
+            if not key in self.source_dict.keys():
+                warnings.warn(
+                    "The key '%s' was not in the source dict" % (key))
 
         # add the variableNames to the existing list
         variableList.extend(variableNames)

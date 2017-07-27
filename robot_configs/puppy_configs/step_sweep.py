@@ -11,6 +11,9 @@ def get_class():
 
 
 class PuppyConfigStepSweep(PuppyConfig):
+    # run this with 100hz variant of puppy
+    # python smp_control.py robot_configs/puppy_configs/step_sweep.py -n 60000 --pickle_name "step_sweep.pickle" -lt 0.01
+
     def __init__(self, args):
         PuppyConfig.__init__(self, args)
         self.classname = self.__class__.__name__
@@ -24,45 +27,52 @@ class PuppyConfigStepSweep(PuppyConfig):
 
         self.step_length = 125
         self.reset_length = 125
-        self.step_size = 0.333 # 0.333 corresponds to 30 deg
+        self.step_size = 0.333  # 0.333 corresponds to 30 deg
+        self.repeat_step = 15
+        self.initialized = False
 
     def send_output(self, algorithm_output):
-        cycle_length = self.step_length + self.reset_length
-        cycle_max = self.smp_control.numtimesteps / cycle_length
-        sweep_angle_total = 2. - self.step_size
-        step_per_cycle = sweep_angle_total / cycle_max
+        if not self.initialized:
+            self.initialized = True
+            print "initializing robot"
 
-        cycle_number = self.smp_control.cnt_main / cycle_length
-        position_in_cycle = self.smp_control.cnt_main % cycle_length
+            self.smp_control.pickler.add_once_variables(
+                ['robot.step_length', 'robot.reset_length', 'robot.step_size', 'robot.repeat_step'])
 
-        if position_in_cycle > self.reset_length:
-            position = step_per_cycle * cycle_number + self.step_size - 1.
-        else:
-            position = step_per_cycle * cycle_number - 1.
+            cycle_length = self.step_length + self.reset_length
+            cycle_max = self.smp_control.numtimesteps / cycle_length
+            steps_max = cycle_max / self.repeat_step
 
-        algorithm_output = np.array(
-            [position] * 4)
+            if self.smp_control.numtimesteps % cycle_length != 0 or cycle_max % self.repeat_step != 0:
+                print "numtimesteps does not fit the cycle length or the repeat steps. To fix it it should be %d" % (steps_max * self.repeat_step * cycle_length)
 
-        self.smp_control.y[self.smp_control.cnt_main, :] = algorithm_output
+            sweep_angle_total = 2. - self.step_size
+            angle_per_step = sweep_angle_total / steps_max
 
-        # velocity control
-        self.motor_velocity = self.motor_position_commands - algorithm_output
-        self.motor_position_commands = algorithm_output
-        self.motor_position_estimate = self.motor_position_estimate * \
-            0.3 + self.motor_position_commands * 0.7
+            # write the whole sequence
+            for i in range(self.smp_control.numtimesteps):
+                cycle_number = i / cycle_length
+                step_number = cycle_number / self.repeat_step
 
-        # write the commands to the message and publish them
+                position_in_cycle = i % cycle_length
+
+                if position_in_cycle > self.reset_length:
+                    # high position
+                    angular_command = angle_per_step * step_number + self.step_size - 1.
+                else:
+                    # low position
+                    angular_command = angle_per_step * step_number - 1.
+
+                self.smp_control.y[i, :] = np.array([angular_command] * 4)
+
+            # display the motor data
+            # plt.plot(self.smp_control.y[:,0])
+            # plt.show()
+
+        self.motor_position_commands = self.smp_control.y[self.smp_control.cnt_main]
         self.msg_motors.data = self.motor_position_commands * self.output_gain
-        self.msg_motors_velocity.data = algorithm_output
         self.smp_control.pub["_puppyMotor"].publish(self.msg_motors)
-        self.smp_control.pub["_puppyMotorVelocity"].publish(
-            self.msg_motors_velocity)
-
-    def before_exit(self):
-        return
-        # plt.plot(self.smp_control.y)
-        # plt.show()
 
 
 if __name__ == "__main__":
-    PuppyConfigSinSweep(None)
+    PuppyConfigStepSweep(None)
