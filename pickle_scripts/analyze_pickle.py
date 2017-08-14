@@ -5,6 +5,7 @@ import argparse
 import sys
 import os
 import numpy as np
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from sklearn import datasets, linear_model
@@ -58,18 +59,224 @@ class Analyzer():
         self.embsize = self.args.embsize
         self.hamming = self.args.hamming
 
-    def all_files(self, directory):
+    """ HELPER FUNCTIONS """
+
+    def _all_files(self, directory):
         for path, dirs, files in os.walk(directory):
             for f in files:
                 yield os.path.join(path, f)
 
-    def get_triu_of_matrix(self, matrix):
+    def _get_triu_of_matrix(self, matrix):
         if matrix.shape[0] != matrix.shape[1]:
             return None
 
         dim = matrix.shape[0]
         triu = np.triu_indices(dim, k=1)
         return matrix[triu]
+
+    def _get_sensor_names(self):
+        """ This function reads the used sensors from the variable dict and
+        gives back an array of all names of the individual sensor dimensions.
+        Its size should be matching the second dimension of x """
+
+        use_sensors = self.variable_dict["robot.use_sensors"]
+        sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
+
+        # create list of sensor names
+        sensor_names = []
+        for sensor in use_sensors:
+            # repeat the sensor name with an identifier as often as the sensor has dimensions
+            sensor_names.extend([sensor + str(j)
+                                 for j in range(sensor_dimensions[sensor])])
+
+        return sensor_names
+
+    def _prepare_data_for_learning(self):
+        testDataLimit = 4 * self.timesteps / 5
+
+        motoremb = np.array([self.motor_commands[i:i + self.embsize].flatten()
+                             for i in range(0, testDataLimit - self.embsize)])
+        motorembtest = np.array([self.motor_commands[i:i + self.embsize].flatten()
+                                 for i in range(testDataLimit, self.timesteps - self.embsize)])
+        #self.sensor_values = self.sensor_values[:,3:]
+
+        # motoremb = self.motor_commands[:testDataLimit]
+
+        self.trainingData = {
+            "motor": motoremb, "sensor": self.sensor_values[self.embsize:testDataLimit]}
+        self.testData = {"motor": motorembtest,
+                         "sensor": self.sensor_values[testDataLimit + self.embsize:]}
+
+    def step_sweep(self):
+        if not 'robot.step_length' in self.variable_dict:
+            warnings.warn("this pickle file was not recorded in the step sweep mode")
+
+        reset_length = self.variable_dict['robot.reset_length']
+        step_length = self.variable_dict['robot.step_length']
+        repeat_step = self.variable_dict['robot.repeat_step']
+        step_size = self.variable_dict['robot.step_size']
+        use_sensors = self.variable_dict['robot.use_sensors']
+        sensor_dimensions = self.variable_dict['robot.sensor_dimensions']
+
+        sensor_names = self._get_sensor_names()
+
+        cut_response = 50
+
+        cycle_length = step_length + reset_length
+        cycle_max = self.variable_dict["numtimesteps"] / cycle_length
+        sweep_angle_total = 2. - step_size
+        angle_per_step = sweep_angle_total / cycle_max
+        steps_max = cycle_max / repeat_step
+
+        x = self.variable_dict["x"]
+        y = self.variable_dict["y"]
+        x -= np.mean(x, axis=0)
+        #x /= np.std(x, axis=all)
+        #x = np.abs(x)
+
+        responses = np.zeros((cycle_max, cut_response, x.shape[1]))
+        avg_responses = np.zeros((steps_max, cut_response, x.shape[1]))
+        std_responses = np.zeros((steps_max, cut_response, x.shape[1]))
+
+        colors = cm.Greys(np.linspace(0, 1, cycle_max))
+        colors = cm.viridis(np.linspace(0, 1, cycle_max))
+        colors = cm.cool(np.linspace(0, 1, steps_max))
+
+        #mymap = mpl.colors.LinearSegmentedColormap.from_list('mycolors',['blue','red'])
+
+        # Using contourf to provide my colorbar info, then clearing the figure
+        Z = [[0,0],[0,0]]
+        levels = range(-180,int(sweep_angle_total * 90. + steps_max),int(steps_max))
+        CS3 = plt.contourf(Z, levels, cmap=cm.cool)
+        plt.clf()
+
+        for i in range(cycle_max):
+            responses[i] = x[i * cycle_length + reset_length: i * cycle_length + reset_length + cut_response]
+            responses[i] -= np.average(responses[i,:5]) # bring the signal of the first timesteps to the center
+
+        for i in range(steps_max):
+            avg_responses[i] = np.average(responses[i * repeat_step: (i+1) * repeat_step], axis = 0)
+            std_responses[i] = np.std(responses[i * repeat_step:(i+1)*repeat_step], axis = 0)
+            avg_responses[i] -= np.average(avg_responses[i,:5], axis=0) # bring the signal of the first timesteps to the center
+
+
+        # plotting
+        f, axarr = plt.subplots(3, 2)
+
+        line_alpha = 0.5
+        line_offset = 3.
+
+        line_offset = 0.
+        for i in range(steps_max):
+            j = steps_max - i - 1
+
+            if j == 1:
+                text = "-180"
+            elif j == steps_max - 1:
+                text = "180"
+            else:
+                text = None
+
+            for dim in range(6):
+                x = range(cut_response)
+                y_avg = avg_responses[j,:,dim]
+                y_std = std_responses[j,:,dim]
+                y_offset = y_avg + j * line_offset
+                y_low = y_offset - y_std
+                y_high = y_offset + y_std
+                ax = axarr[dim / 2, dim % 2]
+
+                #ax.plot(x, y_low, c=colors[i], lw=1, alpha=line_alpha, label=text)
+                #ax.plot(x, y_high, c=colors[i], lw=1, alpha=line_alpha, label=text)
+
+                im = ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=line_alpha, label=text)
+                ax.set_ylabel(sensor_names[dim])
+                ax.set_xlabel("ms")
+                #plt.xticks(np.arange(0, cut_response, 1.0))
+
+                #axarr[1].plot(np.average(np.abs(responses[i,:,3:]), axis = 1)  + (i / repeat_step) * line_offset, c=colors[i], lw=1.5, alpha=line_alpha, label=text)
+                #plt.xticks(np.arange(0, cut_response, 1.0))
+
+                axarr[dim/2, dim%2].legend()
+
+        f.colorbar(CS3)
+
+        # Single plot
+
+        f, ax = plt.subplots(1,1, figsize=(20,15))
+        plt.rc('font', family='serif', size=30)
+        line_alpha = 0.
+        fill_alpha = 0.4
+        for i in range(steps_max-2):
+            j = steps_max - i - 3
+
+            if j == 1:
+                text = "180"
+            elif j == steps_max - 1:
+                text = "-180"
+            else:
+                text = None
+
+            dim = 1
+            x = range(cut_response)
+            y_avg = avg_responses[j,:,dim]
+            y_std = std_responses[j,:,dim]
+            y_offset = y_avg + j * line_offset
+            y_low = y_offset - y_std
+            y_high = y_offset + y_std
+
+            ax.plot(x, y_low, c=colors[j], lw=1, alpha=line_alpha)
+            ax.plot(x, y_high, c=colors[j], lw=1, alpha=line_alpha)
+
+            ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=fill_alpha, label=text)
+
+            #ax.set_ylabel(sensor_names[dim])
+            ax.set_ylabel("$m/s^2$", fontsize=40)
+            ax.set_xlabel("$ms$", fontsize=40)
+        ax.set_title("acceleration - y", fontsize=40)
+
+        cbar = plt.colorbar(CS3)
+        cbar.set_label("angle before step")
+        f.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=None)
+        f.tight_layout()
+        f.savefig('img/stepResponseAccelY.png')
+        plt.show()
+
+    def time_series(self):
+        """ This function can be used to show the time series of data """
+        cut = self.variable_dict["numtimesteps"]
+        x = self.variable_dict["x"][:cut]
+        y = self.variable_dict["y"][:cut]
+        xsi = self.variable_dict["xsi"][:cut]
+        ee = self.variable_dict["EE"][:cut]
+
+        f, axarr = plt.subplots(4, 1)
+
+        sensor_names = self._get_sensor_names()
+        for sen in range(x.shape[1]):
+            axarr[0].plot(x[:, sen], label=sensor_names[sen])
+        axarr[0].set_title("Sensors")
+        axarr[0].legend()
+
+        axarr[1].plot(y)
+
+        for i in range(xsi.shape[1]):
+            axarr[2].plot(xsi[:, i, 0])
+        axarr[2].set_title("xsi")
+
+        # smoothing_window_C = 500
+        # #for sen in range(xsi.shape[1]):
+        # tmp = np.average(np.abs([np.average(xsi[i+50:i+50+smoothing_window_C,:], axis=0) for i in range(xsi.shape[0]-smoothing_window_C-50)]),axis=1)
+        # axarr[2].plot(np.abs(tmp))
+        # axarr[2].set_title("xsi")
+
+        axarr[3].plot(ee)
+
+        f.subplots_adjust(hspace=0.3)
+        plt.legend()
+        plt.show()
+
+
 
     def correlation_func(self):
         loopsteps = self.timesteps - self.windowsize
@@ -120,7 +327,7 @@ class Analyzer():
 
             #allAverageSquaredCorrelations[i,0] = np.sum(np.triu(correlations,k=1).flatten() ** 2)
             #allAverageSquaredCorrelations[i,:] = np.abs(np.triu(correlations,k=1).flatten())
-            allAverageSquaredCorrelations[i, :] = self.get_triu_of_matrix(
+            allAverageSquaredCorrelations[i, :] = self._get_triu_of_matrix(
                 correlations)
 
         corrCombinations = allAverageSquaredCorrelations.shape[1]
@@ -185,28 +392,11 @@ class Analyzer():
         plt.show()
         # print allAverageSquaredCorrelations
 
-    def prepare_data_for_learning(self):
-        testDataLimit = 4 * self.timesteps / 5
-
-        motoremb = np.array([self.motor_commands[i:i + self.embsize].flatten()
-                             for i in range(0, testDataLimit - self.embsize)])
-        motorembtest = np.array([self.motor_commands[i:i + self.embsize].flatten()
-                                 for i in range(testDataLimit, self.timesteps - self.embsize)])
-        #self.sensor_values = self.sensor_values[:,3:]
-
-        # motoremb = self.motor_commands[:testDataLimit]
-
-        self.trainingData = {
-            "motor": motoremb, "sensor": self.sensor_values[self.embsize:testDataLimit]}
-        self.testData = {"motor": motorembtest,
-                         "sensor": self.sensor_values[testDataLimit + self.embsize:]}
-
     def learn_motor_sensor_gmm(self):
         """
         This mode learns the sensor responses from the motor commands with
         gaussian mixture models and tests the result
         """
-        # TODO: implement
 
         for emb in range(1, 100):
             self.embsize = emb
@@ -216,7 +406,7 @@ class Analyzer():
             avg_x = []
             avg_sc = []
 
-            self.prepare_data_for_learning()
+            self._prepare_data_for_learning()
             for k in range(5, 6):
                 sum_sc = 0
                 for i in range(0, 10):
@@ -321,7 +511,7 @@ class Analyzer():
         linear regression and tests the result
         """
 
-        self.prepare_data_for_learning()
+        self._prepare_data_for_learning()
 
         # regr = linear_model.LinearRegression()
         regr = linear_model.Ridge(alpha=10.0)
@@ -393,11 +583,12 @@ class Analyzer():
         plt.show()
 
     def find_best_embsize(self):
-        mse = np.zeros(39)
+        max_embsize = 50
+        mse = np.zeros(max_embsize - 1 )
         regr = linear_model.Ridge(alpha=10.0)
-        for emb in range(1, 40):
+        for emb in range(1, max_embsize):
             self.embsize = emb
-            self.prepare_data_for_learning()
+            self._prepare_data_for_learning()
             regr.fit(self.trainingData["motor"], self.trainingData["sensor"])
             predTest = regr.predict(self.testData["motor"])
             mse[emb - 1] = np.mean((predTest - self.testData["sensor"]) ** 2)
@@ -632,6 +823,7 @@ class Analyzer():
         plt.show()
 
     def time_series_smoothing(self):
+        """ This is a special function for a tested feature of smoothing. It was used with the pendulum. """
         x = self.variable_dict["x"]
         y = self.variable_dict["y"]
         sensors = 3
@@ -654,162 +846,6 @@ class Analyzer():
         print "epsC\t", epsC
         print "Creativity\t", creativity
 
-    def step_sweep(self):
-        if not 'robot.step_length' in self.variable_dict:
-            warnings.warn("this pickle file was not recorded in the step sweep mode")
-
-        reset_length = self.variable_dict['robot.reset_length']
-        step_length = self.variable_dict['robot.step_length']
-        repeat_step = self.variable_dict['robot.repeat_step']
-        step_size = self.variable_dict['robot.step_size']
-        use_sensors = self.variable_dict['robot.use_sensors']
-        sensor_dimensions = self.variable_dict['robot.sensor_dimensions']
-
-        # create list of sensor names
-        sensor_names = []
-        for sensor in use_sensors:
-            # repeat the sensor name with an identifier as often as the sensor has dimensions
-            sensor_names.extend([sensor + str(j)
-                                 for j in range(sensor_dimensions[sensor])])
-
-        cut_response = 50
-
-        cycle_length = step_length + reset_length
-        cycle_max = self.variable_dict["numtimesteps"] / cycle_length
-        sweep_angle_total = 2. - step_size
-        angle_per_step = sweep_angle_total / cycle_max
-        steps_max = cycle_max / repeat_step
-
-        x = self.variable_dict["x"]
-        y = self.variable_dict["y"]
-        x -= np.mean(x, axis=0)
-        #x /= np.std(x, axis=all)
-        #x = np.abs(x)
-
-        responses = np.zeros((cycle_max, cut_response, x.shape[1]))
-        avg_responses = np.zeros((steps_max, cut_response, x.shape[1]))
-        std_responses = np.zeros((steps_max, cut_response, x.shape[1]))
-
-        colors = cm.Greys(np.linspace(0, 1, cycle_max))
-        colors = cm.viridis(np.linspace(0, 1, cycle_max))
-        colors = cm.cool(np.linspace(0, 1, steps_max))
-
-        for i in range(cycle_max):
-            responses[i] = x[i * cycle_length + reset_length: i * cycle_length + reset_length + cut_response]
-            responses[i] -= np.average(responses[i,:5]) # bring the signal of the first timesteps to the center
-
-        for i in range(steps_max):
-            avg_responses[i] = np.average(responses[i * repeat_step: (i+1) * repeat_step], axis = 0)
-            std_responses[i] = np.std(responses[i * repeat_step:(i+1)*repeat_step], axis = 0)
-            avg_responses[i] -= np.average(avg_responses[i,:5], axis=0) # bring the signal of the first timesteps to the center
-
-
-        # plotting
-        f, axarr = plt.subplots(3, 2)
-
-        line_alpha = 0.5
-        line_offset = 3.
-
-        line_offset = 0.
-        for i in range(steps_max):
-            j = steps_max - i - 1
-
-            if j == 1:
-                text = "-180"
-            elif j == steps_max - 1:
-                text = "180"
-            else:
-                text = None
-
-            for dim in range(6):
-                x = range(cut_response)
-                y_avg = avg_responses[j,:,dim]
-                y_std = std_responses[j,:,dim]
-                y_offset = y_avg + j * line_offset
-                y_low = y_offset - y_std
-                y_high = y_offset + y_std
-                ax = axarr[dim / 2, dim % 2]
-
-                #ax.plot(x, y_low, c=colors[i], lw=1, alpha=line_alpha, label=text)
-                #ax.plot(x, y_high, c=colors[i], lw=1, alpha=line_alpha, label=text)
-
-                ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=line_alpha, label=text)
-                ax.set_ylabel(sensor_names[dim])
-                ax.set_xlabel("ms")
-                #plt.xticks(np.arange(0, cut_response, 1.0))
-
-                #axarr[1].plot(np.average(np.abs(responses[i,:,3:]), axis = 1)  + (i / repeat_step) * line_offset, c=colors[i], lw=1.5, alpha=line_alpha, label=text)
-                #plt.xticks(np.arange(0, cut_response, 1.0))
-
-                axarr[dim/2, dim%2].legend()
-
-        f, ax = plt.subplots(1,1)
-        line_alpha = 0.
-        fill_alpha = 0.4
-        for i in range(steps_max):
-            j = steps_max - i - 1
-
-            if j == 1:
-                text = "180"
-            elif j == steps_max - 1:
-                text = "-180"
-            else:
-                text = None
-
-            dim = 1
-            x = range(cut_response)
-            y_avg = avg_responses[j,:,dim]
-            y_std = std_responses[j,:,dim]
-            y_offset = y_avg + j * line_offset
-            y_low = y_offset - y_std
-            y_high = y_offset + y_std
-
-            ax.plot(x, y_low, c=colors[j], lw=1, alpha=line_alpha)
-            ax.plot(x, y_high, c=colors[j], lw=1, alpha=line_alpha)
-
-            ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=fill_alpha, label=text)
-
-            #ax.set_ylabel(sensor_names[dim])
-            ax.set_ylabel("m/s^2")
-            ax.set_xlabel("ms")
-        ax.set_title("Acceleration - Y")
-        ax.legend()
-        plt.show()
-
-    def time_series(self):
-        cut = self.variable_dict["numtimesteps"]
-        x = self.variable_dict["x"][:cut]
-        y = self.variable_dict["y"][:cut]
-        xsi = self.variable_dict["xsi"][:cut]
-        ee = self.variable_dict["EE"][:cut]
-        # print self.variable_dict["robot.sensor_dimensions"]
-
-        f, axarr = plt.subplots(4, 1)
-
-        sensor_names = ["acc_x", "acc_y",
-                        "acc_z", "gyro_x", "gyro_y", "gyro_z"]
-        for sen in range(x.shape[1]):
-            axarr[0].plot(x[:, sen], label=sensor_names[sen])
-        axarr[0].set_title("Sensors")
-        axarr[0].legend()
-
-        axarr[1].plot(y)
-
-        for i in range(xsi.shape[1]):
-            axarr[2].plot(xsi[:, i, 0])
-        axarr[2].set_title("xsi")
-
-        # smoothing_window_C = 500
-        # #for sen in range(xsi.shape[1]):
-        # tmp = np.average(np.abs([np.average(xsi[i+50:i+50+smoothing_window_C,:], axis=0) for i in range(xsi.shape[0]-smoothing_window_C-50)]),axis=1)
-        # axarr[2].plot(np.abs(tmp))
-        # axarr[2].set_title("xsi")
-
-        axarr[3].plot(ee)
-
-        f.subplots_adjust(hspace=0.3)
-        plt.legend()
-        plt.show()
 
     def split_sensors_effects_smooth(self):
         # TODO: not functional
@@ -871,18 +907,11 @@ class Analyzer():
         x_std = np.std(x, axis=0)
         y_std = np.std(y, axis=0)
 
-        use_sensors = self.variable_dict["robot.use_sensors"]
-        sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
-
-        # create list of sensor names
-        sensor_names = []
-        for sensor in use_sensors:
-            # repeat the sensor name with an identifier as often as the sensor has dimensions
-            sensor_names.extend([sensor + str(j)
-                                 for j in range(sensor_dimensions[sensor])])
+        sensor_names = self._get_sensor_names()
 
         colors = cm.jet(np.linspace(0, 1, len(sensor_names) * embedding))
         #colors = ['r','r','r','b','b','b','k','k','k','k']
+
 
         cut_s = 0
         cut_e = C.shape[0]
@@ -900,10 +929,11 @@ class Analyzer():
                        for i in range(C.shape[0] - smoothing_window_C)]
                 tmp = np.array(tmp[cut_s:cut_e]) / y_std[mot]
                 if mot == 0 and embedding == 1:
-                    plt.plot(tmp, label="C " +
-                             sensor_names[sen], c=colors[sen], alpha=alpha_C)
+                    text = "C" + sensor_names[sen]
                 else:
-                    plt.plot(tmp, c=colors[sen], alpha=alpha_C)
+                    text = None
+
+                plt.plot(tmp, label=text, c=colors[sen], alpha=alpha_C)
 
         plt.legend()
         smoothing_window_A = 1
@@ -918,10 +948,10 @@ class Analyzer():
                        for i in range(C.shape[0] - smoothing_window_A)]
                 tmp = np.array(tmp[cut_s:cut_e]) / x_std[sen]
                 if mot == 0 and embedding == 1:
-                    plt.plot(tmp, label="A " +
-                             sensor_names[sen], c=colors[sen], alpha=alpha_A)
+                    text = "A " + sensor_names[sen]
                 else:
-                    plt.plot(tmp, c=colors[sen], alpha=alpha_A)
+                    text = None
+                plt.plot(tmp, label=text, c=colors[sen], alpha=alpha_A)
                 plt.legend()
         plt.show()
 
