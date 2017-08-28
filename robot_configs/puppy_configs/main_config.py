@@ -29,7 +29,7 @@ class PuppyConfig(RobotConfig):
         self.nummot = 4
         self.lag = 4
         self.embedding = 1
-        self.output_gain = 32000
+        self.output_gain = 32000.
 
         self.learning_enabled = True
         self.use_sensors_for_model = True

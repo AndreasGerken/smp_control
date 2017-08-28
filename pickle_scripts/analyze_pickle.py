@@ -45,21 +45,58 @@ class Analyzer():
         except Exception:
             raise Exception("File not found, use -f and the filepath")
 
-        # if self.variable_dict["dataversion"] == 1:
-        #    warnings.warn("Pickle from V1, xsi might not be correct")
+        self._extract_all_variables()
+        self._prepare_sensor_names()
 
-        # if self.variable_dict["dataversion"] >= 9:
-        #    self.hz = self.variable_dict["hz"]
-        self.motor_commands = self.variable_dict["y"]
-        self.sensor_values = self.variable_dict["x"]
+
+    """ HELPER FUNCTIONS """
+
+    def _extract_all_variables(self):
+        self.numtimesteps = self.variable_dict["numtimesteps"]
+
+        self.cut = args.cut
+        if self.cut <= 0 or self.cut > self.numtimesteps:
+            self.cut = self.numtimesteps
+
+        self.motor_commands = self.variable_dict["y"][:self.cut]
+        self.sensor_values = self.variable_dict["x"][:self.cut]
         self.timesteps = self.motor_commands.shape[0]
         self.nummot = self.motor_commands.shape[1]
+        self.numsen = self.sensor_values.shape[1]
 
         self.windowsize = self.args.windowsize
         self.embsize = self.args.embsize
         self.hamming = self.args.hamming
 
-    """ HELPER FUNCTIONS """
+        self.use_sensors = self.variable_dict["robot.use_sensors"]
+        self.sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
+
+    def _prepare_sensor_names(self):
+        xyz = ["x", "y","z"]
+        xyzw = ["x", "y", "z","w"]
+        self.sensor_name_extensions = {"acc" : xyz, "gyr" : xyz, "orient" : xyzw, "euler:" : xyz}
+        self.sensor_name_long = {"acc": "Accelerometer", "gyr": "Gyroscope", "orient": "Orientation", "rot": "Rotation"}
+        self.sensor_names_with_dimensions = self._get_sensor_names_with_dimensions()
+
+    def _get_sensor_names_with_dimensions(self):
+        """ This function reads the used sensors from the variable dict and
+        gives back an array of all names of the individual sensor dimensions.
+        Its size should be matching the second dimension of x """
+
+        # create list of sensor names
+        sensor_names = []
+        for sensor in self.use_sensors:
+            # repeat the sensor name with an identifier as often as the sensor has dimensions
+            for sensor_dimension in range(self.sensor_dimensions[sensor]):
+                if sensor in self.sensor_name_extensions:
+                    name = sensor + " " + self.sensor_name_extensions[sensor][sensor_dimension]
+                else:
+                    name = sensor + " " + str(sensor_dimension)
+                sensor_names.extend([name])
+            #sensor_names.extend([sensor + " "+ str(j)
+            #                     for j in range(self.sensor_dimensions[sensor])])
+
+        return sensor_names
 
     def _all_files(self, directory):
         for path, dirs, files in os.walk(directory):
@@ -74,22 +111,12 @@ class Analyzer():
         triu = np.triu_indices(dim, k=1)
         return matrix[triu]
 
-    def _get_sensor_names(self):
-        """ This function reads the used sensors from the variable dict and
-        gives back an array of all names of the individual sensor dimensions.
-        Its size should be matching the second dimension of x """
+    def _get_cumsum_sensor_dimensions(self):
+        """ This functions returns an array of the cumulative sum of the dimensions of each sensor.
+        With acc 3dim and gyro 3 dim it returns [3, 6]."""
 
-        use_sensors = self.variable_dict["robot.use_sensors"]
-        sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
-
-        # create list of sensor names
-        sensor_names = []
-        for sensor in use_sensors:
-            # repeat the sensor name with an identifier as often as the sensor has dimensions
-            sensor_names.extend([sensor + str(j)
-                                 for j in range(sensor_dimensions[sensor])])
-
-        return sensor_names
+        use_sensor_dimensions = [self.sensor_dimensions[sensor] for sensor in self.use_sensors]
+        return np.cumsum(use_sensor_dimensions)
 
     def _prepare_data_for_learning(self):
         testDataLimit = 4 * self.timesteps / 5
@@ -115,15 +142,11 @@ class Analyzer():
         step_length = self.variable_dict['robot.step_length']
         repeat_step = self.variable_dict['robot.repeat_step']
         step_size = self.variable_dict['robot.step_size']
-        use_sensors = self.variable_dict['robot.use_sensors']
-        sensor_dimensions = self.variable_dict['robot.sensor_dimensions']
-
-        sensor_names = self._get_sensor_names()
 
         cut_response = 50
 
         cycle_length = step_length + reset_length
-        cycle_max = self.variable_dict["numtimesteps"] / cycle_length
+        cycle_max = self.numtimesteps / cycle_length
         sweep_angle_total = 2. - step_size
         angle_per_step = sweep_angle_total / cycle_max
         steps_max = cycle_max / repeat_step
@@ -190,7 +213,7 @@ class Analyzer():
                 #ax.plot(x, y_high, c=colors[i], lw=1, alpha=line_alpha, label=text)
 
                 im = ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=line_alpha, label=text)
-                ax.set_ylabel(sensor_names[dim])
+                ax.set_ylabel(self.sensor_names_with_dimension[dim])
                 ax.set_xlabel("ms")
                 #plt.xticks(np.arange(0, cut_response, 1.0))
 
@@ -230,7 +253,6 @@ class Analyzer():
 
             ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=fill_alpha, label=text)
 
-            #ax.set_ylabel(sensor_names[dim])
             ax.set_ylabel("$m/s^2$", fontsize=40)
             ax.set_xlabel("$ms$", fontsize=40)
         ax.set_title("acceleration - y", fontsize=40)
@@ -242,19 +264,53 @@ class Analyzer():
         f.savefig('img/stepResponseAccelY.png')
         plt.show()
 
+    def time_series_motors_sensors(self):
+        """ This function can be used to show the time series of data """
+        # THIS IS USED AND TESTED FOR EXPERIMENT 2
+
+        f, axarr = plt.subplots(len(self.use_sensors) + 1, 1, figsize=(20,12))
+
+        for motor in range(self.nummot):
+            axarr[0].plot(self.motor_commands[:, motor])
+        axarr[0].set_title("Motor Commands")
+
+        sensor_index = 0
+        for sensor in range(len(self.use_sensors)):
+            sensor_name = self.use_sensors[sensor]
+            for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
+                if sensor_name in self.sensor_name_extensions:
+                    _label = self.sensor_name_extensions[sensor_name][dim]
+                else:
+                    _label = str(dim)
+                axarr[sensor + 1].plot(self.sensor_values[:, sensor_index], label= _label)
+
+                if sensor_name in self.sensor_name_long:
+                    title = self.sensor_name_long[sensor_name]
+                else:
+                    title = sensor_name
+
+
+                axarr[sensor + 1].set_title(title)
+                sensor_index += 1
+            axarr[sensor +1 ].legend()
+        f.tight_layout()
+        f.savefig('img/time_series_motor_sensors.png')
+        plt.show()
+
+
     def time_series(self):
         """ This function can be used to show the time series of data """
         cut = self.variable_dict["numtimesteps"]
-        x = self.variable_dict["x"][:cut]
-        y = self.variable_dict["y"][:cut]
+        x = self.sensor_values
+        y = self.motor_commands
         xsi = self.variable_dict["xsi"][:cut]
         ee = self.variable_dict["EE"][:cut]
 
         f, axarr = plt.subplots(4, 1)
+        plt.rc('font', family='serif', size=30)
 
-        sensor_names = self._get_sensor_names()
         for sen in range(x.shape[1]):
-            axarr[0].plot(x[:, sen], label=sensor_names[sen])
+            axarr[0].plot(x[:, sen], label=self.sensor_names_with_dimensions[sen])
         axarr[0].set_title("Sensors")
         axarr[0].legend()
 
@@ -505,6 +561,37 @@ class Analyzer():
                 plt.plot(sen_pred[:, i], c='r', alpha=0.7)
         plt.show()
 
+    def learn_motor_sensor_linear_new(self):
+        """
+        This mode learns the sensor responses from the motor commands with
+        linear regression and tests the result.
+        """
+        # THIS IS USED AND TESTED FOR EXPERIMENT 1
+
+        self.sensor_values -= np.mean(self.sensor_values, axis=0)
+        self._prepare_data_for_learning()
+
+
+        regr = linear_model.Ridge(alpha=5.)
+        regr.fit(self.trainingData["motor"], self.trainingData["sensor"])
+        predTest = regr.predict(self.testData["motor"])
+
+        mse = np.mean((predTest - self.testData["sensor"]) ** 2)
+
+        print mse
+
+        f, ax = plt.subplots(2,3, sharey=True, sharex=True, figsize=(20,12))
+        plt.rc('font', family='serif', size=30)
+
+
+        for i in range(self.numsen):
+            ax[i/3, i%3].plot(predTest[:,i])
+            ax[i/3, i%3].plot(self.testData["sensor"][:,i])
+            plt.xticks(np.arange(0,400,100))
+        f.tight_layout()
+        f.savefig('img/sensor_motor_linear.png')
+        plt.show()
+
     def learn_motor_sensor_linear(self):
         """
         This mode learns the sensor responses from the motor commands with
@@ -710,6 +797,8 @@ class Analyzer():
         print sensors.shape
 
     def activity_plot(self):
+        # TODO: erase or modify
+
         if self.windowsize % 2 != 0:
             print("please choose a even windowsize")
             return
@@ -736,7 +825,6 @@ class Analyzer():
         plt.show()
 
     def activity_plot2(self):
-
         windowfunction = np.hamming(self.windowsize)
         sv_abs = np.sum(np.abs(self.sensor_values), axis=1)
         sv_abs[0] = sv_abs[1]
@@ -879,7 +967,7 @@ class Analyzer():
     def model_matrix_plot_smooth(self):
         C = self.variable_dict["C"]
         A = self.variable_dict["A"]
-        sensors = 3
+        sensors = self.numsen
 
         fig = plt.figure()
         ax = None
@@ -898,6 +986,8 @@ class Analyzer():
 
     def model_matrix_plot(self):
         onePlot = True
+        oneColorPerSensor = False
+        labelForEachCoefficient = True
 
         C = self.variable_dict["C"]
         A = self.variable_dict["A"]
@@ -907,33 +997,40 @@ class Analyzer():
         x_std = np.std(x, axis=0)
         y_std = np.std(y, axis=0)
 
-        sensor_names = self._get_sensor_names()
-
-        colors = cm.jet(np.linspace(0, 1, len(sensor_names) * embedding))
+        colors = cm.jet(np.linspace(0, 1, len(self.sensor_names_with_dimensions) * embedding))
         #colors = ['r','r','r','b','b','b','k','k','k','k']
 
 
         cut_s = 0
         cut_e = C.shape[0]
         smoothing_window_C = 1
-        alpha_C = 0.5
+        alpha_C = 1
 
         if onePlot:
             plt.subplot(121)
         for mot in range(C.shape[1]):
             for sen in range(C.shape[2]):
+                print mot, sen
                 if not onePlot:
                     plt.subplot(C.shape[1], 2, mot * 2 + 1)
 
                 tmp = [np.average(C[i:i + smoothing_window_C, mot, sen])
                        for i in range(C.shape[0] - smoothing_window_C)]
                 tmp = np.array(tmp[cut_s:cut_e]) / y_std[mot]
-                if mot == 0 and embedding == 1:
-                    text = "C" + sensor_names[sen]
+                if labelForEachCoefficient:
+                    text = "C [sensor %d, motor %d]" % (sen, mot)
+
+                elif mot == 0 and embedding == 1:
+                    text = "C" + self.sensor_names_with_dimensions[sen]
                 else:
                     text = None
 
-                plt.plot(tmp, label=text, c=colors[sen], alpha=alpha_C)
+                if oneColorPerSensor:
+                    _color = colors[sen]
+                else:
+                    _color = None
+
+                plt.plot(tmp, label=text, c=_color, alpha=alpha_C)
 
         plt.legend()
         smoothing_window_A = 1
@@ -948,7 +1045,7 @@ class Analyzer():
                        for i in range(C.shape[0] - smoothing_window_A)]
                 tmp = np.array(tmp[cut_s:cut_e]) / x_std[sen]
                 if mot == 0 and embedding == 1:
-                    text = "A " + sensor_names[sen]
+                    text = "A " + self.sensor_names_with_dimensions[sen]
                 else:
                     text = None
                 plt.plot(tmp, label=text, c=colors[sen], alpha=alpha_A)
@@ -1009,6 +1106,7 @@ class Analyzer():
 if __name__ == "__main__":
     function_dict = {
         'ts': Analyzer.time_series,
+        'ts_ms': Analyzer.time_series_motors_sensors,
         'split_sensors': Analyzer.split_sensors_effects_smooth,
         'cor': Analyzer.correlation_func,
         'scat': Analyzer.scattermatrix_func,
@@ -1016,6 +1114,7 @@ if __name__ == "__main__":
         'spect': Analyzer.spectogram_func,
         'lin': Analyzer.learn_motor_sensor_linear,
         'lin_cross': Analyzer.learn_motor_sensor_linear_cross,
+        'lin_new': Analyzer.learn_motor_sensor_linear_new,
         'mlp_cross': Analyzer.learn_motor_sensor_mlp_cross,
         'gmm': Analyzer.learn_motor_sensor_gmm,
         'model_matrix_plot': Analyzer.model_matrix_plot,
@@ -1041,6 +1140,7 @@ if __name__ == "__main__":
                         help="correlation window size", default=100)
     parser.add_argument("-es", "--embsize", type=int,
                         help="history time steps for learning", default=15)
+    parser.add_argument("-cut", "--cut", type=int, help="Cut of the graph after 'cut' timesteps.", default=0)
     args = parser.parse_args()
 
     if(args.filename == None and args.randomFile == False):

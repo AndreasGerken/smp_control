@@ -8,6 +8,7 @@ import imp
 import sys
 import time
 import os
+import warnings
 
 # ros imports
 import rospy
@@ -192,14 +193,14 @@ class SMP_control(smp_thread_ros):
         self.y[self.cnt_main, :] = self.g(Cx_fut + self.h)[:, 0]
 
         if self.verbose:
-            print 'x_fut:\t', x_fut
+            print 'x_fut:\t', x_fut_emb
             print 'C:\t', self.C
             print 'Cx_fut\t: ', Cx_fut
             print 'new y\t', self.y[self.cnt_main, :]
 
     def check_and_send_output(self):
         """ Gets the output from the y matrix, checks the dimensionality and
-        commands the robot class to send the output.
+        commands the robot class to send the output. The robot configuration can overwrite the command by returning something else.
         """
         motor_output = self.y[self.cnt_main, :]
 
@@ -211,7 +212,10 @@ class SMP_control(smp_thread_ros):
         if self.verbose:
             print 'Outputs: ', motor_output
 
-        self.robot.send_output(motor_output)
+        robot_response = self.robot.send_output(motor_output)
+
+        if robot_response is not None:
+            self.y[self.cnt_main, :] = robot_response
 
     def learning_step(self):
         """ One learning step of the learning algorithm (homeostasis or homeokinesis)"""
@@ -256,19 +260,23 @@ class SMP_control(smp_thread_ros):
         self.pub['_lpzros_xsi'].publish(self.msg_xsi)
 
         if(self.verbose):
+            print "\n"
             print "x %s\t" % str(x_lag_emb)
             print "y %s\t" % str(y_lag_emb)
+            print "A %s\t" % str(self.A)
+            print "x_fut %s\t" %str(x_fut)
             print 'g_prime\t', g_prime
             print 'g_prime_inv\t', g_prime_inv
             print "Xsi Average %f\t" % self.xsi_avg
+            print "\n"
 
         """
         forward model learning
         """
         # cooling of the modelmatrix
         self.A += self.epsA * \
-            np.dot(self.xsi, y_lag_emb.T) + (self.A * -0.0003)
-        self.b += self.epsA * self.xsi + (self.b * -0.0001)
+            np.dot(self.xsi, y_lag_emb.T) + (self.A * -0.001)
+        self.b += self.epsA * self.xsi + (self.b * -0.001)
 
         """
         controller learning
@@ -350,22 +358,32 @@ class SMP_control(smp_thread_ros):
             if not user_input is "Y":
                 return
 
-        id = 0
-        while True:
-            if self.pickle_name == "":
-                self.pickle_name = "recording_eC%.2f_eA%.2f_c%.2f_id%d.pickle" % (
-                    self.epsC, self.epsA, self.creativity, id)
+        # save as newest
+        self.pickler.save_pickle(
+            self.pickle_folder + "/" + self.pickle_name_newest, verbose=False)
 
-            if not os.path.exists(self.pickle_name):
+        # if a pickle name was given, use it
+        if self.pickle_name != "":
                 self.pickler.save_pickle(
                     self.pickle_folder + "/" + self.pickle_name)
+                return
+
+
+        # find a new name, indicating eC, eA, c and an running id
+        id = 0
+        while True:
+            self.pickle_name = "recording_eC%.2f_eA%.2f_c%.2f_id%d.pickle" % (
+                self.epsC, self.epsA, self.creativity, id)
+
+
+            if not os.path.exists(self.pickle_folder + "/" + self.pickle_name):
                 self.pickler.save_pickle(
-                    self.pickle_folder + "/" + self.pickle_name_newest, verbose=False)
+                    self.pickle_folder + "/" + self.pickle_name)
                 return
 
             # increment id and try again
             id += 1
-            if id == 10000:
+            if id >= 10000:
                 raise Exception(
                     "While searching for an id to save the pickle 10000 was reached. Did you really do so many?")
 
@@ -406,11 +424,11 @@ if __name__ == '__main__':
         description='Implementation of the self exploration algorithms homeostasis and homeokinesis')
     parser.add_argument('file')
     parser.add_argument('-m', '--mode', type=str,
-                        help='select mode [hs] from ' + str(SMP_control._modes), default='hk')
+                        help='Select the learning algorithm, hs for Homeokinesis and hk for Homeostasis, default: hk', default='hk')
     parser.add_argument('-n', '--numtimesteps', type=int,
-                        help='Episode length in timesteps, standard 1000', default=1000)
+                        help='Episode length in timesteps, default: 1000', default=1000)
     parser.add_argument('-lt', '--loop_time', type=float,
-                        help='delay betwself.EEn timesteps in the loop', default=0.05)
+                        help='Delay between the timesteps in the loop, default: 0.05', default=0.05)
     parser.add_argument('-eC', '--epsC', type=float,
                         help='learning rate for controller', default=0.1)
     parser.add_argument('-eA', '--epsA', type=float,
@@ -418,9 +436,13 @@ if __name__ == '__main__':
     parser.add_argument('-c', '--creativity', type=float,
                         help='creativity', default=0.5)
     parser.add_argument('-v', '--verbose', type=bool,
-                        help='print many motor and sensor commands', default=False)
+                        help='Print debug information, default: False', default=False)
     parser.add_argument("-pickle", "--pickle_name", type=str, default="")
-    args = parser.parse_args()
+    args, unknown_args = parser.parse_known_args()
+
+    if unknown_args:
+        warnings.warn("Unknown arguments were parsed in smp_control. They will be parsed by the robot configuration again:")
+        print "unknown_args: %s" % str(unknown_args)
 
     # import the robot class
     class_name = args.file.split('.py')[0]

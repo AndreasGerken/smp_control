@@ -5,9 +5,9 @@
     <id>UMLClass</id>
     <coordinates>
       <x>520</x>
-      <y>310</y>
+      <y>420</y>
       <w>310</w>
-      <h>370</h>
+      <h>170</h>
     </coordinates>
     <panel_attributes>/*RobotConfig*/
 --
@@ -15,23 +15,10 @@
 -- abstract configuration class
 -- defines the interface
 --
-*variables:*
-- requiredProperties
-/- use_sensors/
-/- sensor_dimensions/
-/- classname/
-/- learning_enabled/
-/- pub_names/
-/- sub_names/
-/- lag/
-/- embedding/
-/- numsen/
-/- nummot/
---
 *methods:*
 /+ get_input()/
 /+ send_output(algorithm_output)/
-+ set_sensors(use_sensors)
++set_sensors
 + check_properties()
 </panel_attributes>
     <additional_attributes/>
@@ -40,9 +27,9 @@
     <id>UMLClass</id>
     <coordinates>
       <x>520</x>
-      <y>70</y>
+      <y>190</y>
       <w>310</w>
-      <h>210</h>
+      <h>170</h>
     </coordinates>
     <panel_attributes>*Specific configurations*
 --
@@ -50,9 +37,6 @@
 - robot specific implementation
 - trigger the communication with
   the sensors and actors of the robot
---
-*variables:*
-- variables from RobotConfig
 --
 *methods:*
 /+ methods from RobotConfig/
@@ -64,31 +48,26 @@
     <id>Relation</id>
     <coordinates>
       <x>560</x>
-      <y>270</y>
+      <y>350</y>
       <w>30</w>
-      <h>60</h>
+      <h>90</h>
     </coordinates>
     <panel_attributes>lt=&lt;&lt;-</panel_attributes>
-    <additional_attributes>10.0;10.0;10.0;40.0</additional_attributes>
+    <additional_attributes>10.0;10.0;10.0;70.0</additional_attributes>
   </element>
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>910</x>
+      <x>900</x>
       <y>420</y>
       <w>310</w>
-      <h>270</h>
+      <h>200</h>
     </coordinates>
     <panel_attributes>*SMP_control*
 --
 *responsibilities:*
 - run the learning algorithm
 - trigger the interface to the robot configuration
---
-*variables:*
-- variables from arguments
-- variables for the learning algorithm
-- buffers for sensor and motor states
 --
 *methods:*
 - run()
@@ -104,8 +83,8 @@
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>910</x>
-      <y>730</y>
+      <x>900</x>
+      <y>660</y>
       <w>310</w>
       <h>120</h>
     </coordinates>
@@ -120,8 +99,8 @@
   <element>
     <id>Relation</id>
     <coordinates>
-      <x>960</x>
-      <y>680</y>
+      <x>950</x>
+      <y>610</y>
       <w>30</w>
       <h>70</h>
     </coordinates>
@@ -132,35 +111,28 @@
     <id>Relation</id>
     <coordinates>
       <x>820</x>
-      <y>460</y>
-      <w>110</w>
+      <y>480</y>
+      <w>100</w>
       <h>40</h>
     </coordinates>
     <panel_attributes>lt=-
 m1=1
 m2=1</panel_attributes>
-    <additional_attributes>10.0;10.0;90.0;10.0</additional_attributes>
+    <additional_attributes>10.0;10.0;80.0;10.0</additional_attributes>
   </element>
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>910</x>
-      <y>70</y>
+      <x>900</x>
+      <y>190</y>
       <w>310</w>
-      <h>270</h>
+      <h>170</h>
     </coordinates>
     <panel_attributes>*Pickler*
 --
 *responsibilities:*
 - buffer data from connected instance
 - save data to a file in the pickle format
---
-*variables:*
-- variableNamesOnce
-- variableNamesFrequent
-- numtimesteps
-- source_dict
-- frequentBuffer
 --
 *methods:*
 - add_once_variables(variable_names)
@@ -172,21 +144,21 @@ m2=1</panel_attributes>
   <element>
     <id>Relation</id>
     <coordinates>
-      <x>990</x>
-      <y>330</y>
+      <x>980</x>
+      <y>350</y>
       <w>30</w>
-      <h>110</h>
+      <h>90</h>
     </coordinates>
     <panel_attributes>lt=-
 m1=1
 m2=1</panel_attributes>
-    <additional_attributes>10.0;10.0;10.0;90.0</additional_attributes>
+    <additional_attributes>10.0;10.0;10.0;70.0</additional_attributes>
   </element>
   <element>
     <id>UMLClass</id>
     <coordinates>
       <x>520</x>
-      <y>710</y>
+      <y>630</y>
       <w>310</w>
       <h>70</h>
     </coordinates>
@@ -201,7 +173,7 @@ m2=1</panel_attributes>
     <id>UMLClass</id>
     <coordinates>
       <x>520</x>
-      <y>820</y>
+      <y>750</y>
       <w>290</w>
       <h>30</h>
     </coordinates>
@@ -213,25 +185,25 @@ m2=1</panel_attributes>
     <id>Relation</id>
     <coordinates>
       <x>570</x>
-      <y>770</y>
+      <y>690</y>
       <w>70</w>
-      <h>70</h>
+      <h>80</h>
     </coordinates>
     <panel_attributes>lt=&lt;.&gt;
 serial
 </panel_attributes>
-    <additional_attributes>10.0;50.0;10.0;10.0</additional_attributes>
+    <additional_attributes>10.0;60.0;10.0;10.0</additional_attributes>
   </element>
   <element>
     <id>Relation</id>
     <coordinates>
       <x>820</x>
-      <y>740</y>
-      <w>110</w>
+      <y>660</y>
+      <w>100</w>
       <h>40</h>
     </coordinates>
     <panel_attributes>lt=&lt;.&gt;
 ROS</panel_attributes>
-    <additional_attributes>90.0;20.0;10.0;20.0</additional_attributes>
+    <additional_attributes>80.0;20.0;10.0;20.0</additional_attributes>
   </element>
 </diagram>

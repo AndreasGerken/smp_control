@@ -5,7 +5,7 @@ class RobotConfig():
     __metaclass__ = ABCMeta
 
 
-    requiredProperties = ['use_sensors','sensor_dimensions','classname','learning_enabled','pub_names','lag','embedding','numsen','nummot','sensor_vec']
+    requiredProperties = ['use_sensors','sensor_dimensions','classname','learning_enabled','pub_names','lag','embedding','numsen','nummot']
 
     def __init__(self):
         self.classname = self.__class__.__name__

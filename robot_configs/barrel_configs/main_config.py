@@ -21,7 +21,7 @@ class BarrelConfig(RobotConfig):
         self.set_sensors(['rot'])
 
         self.nummot = 2
-        self.lag = 1
+        self.lag = 2
         self.embedding = 1
         self.output_gain = 1
 
@@ -37,7 +37,9 @@ class BarrelConfig(RobotConfig):
         self.sensor_vec = msg.data
 
     def get_input(self):
+
         return self.sensor_vec
+
 
     def send_output(self, algorithm_output):
         self.msg_motors.data = algorithm_output

@@ -1,0 +1,6 @@
+*.pyc
+*.pickle
+/pickles/*
+!/pickles/*.zip
+!/pickles/sin_controller/*
+!/pickles/barrel/*

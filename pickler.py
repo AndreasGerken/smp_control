@@ -99,4 +99,4 @@ class Pickler():
         pickle.dump(once_dict, open(pickle_file_name, 'wb'))
 
         if verbose:
-            print "--------------\nVariables saved in pickle file\nVariables once: [%s]\nVariables frequent: [%s]\nfilename = %s\n--------------" % (', '.join(self.variableNamesOnce), ', '.join(self.variableNamesFrequent), pickle_file_name)
+            print "--------------\nVariables saved in pickle file\nVariables once: [%s]\nVariables frequent: [%s]\nfilename = %s and pickles/newest.pickle\n--------------" % (', '.join(self.variableNamesOnce), ', '.join(self.variableNamesFrequent), pickle_file_name)

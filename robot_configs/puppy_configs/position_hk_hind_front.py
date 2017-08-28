@@ -20,7 +20,7 @@ class PuppyConfigPosition(PuppyConfig):
         self.set_sensors(['gyr', 'acc'])
 
         self.lag = 20
-        self.embedding = 1
+        self.embedding = 11
         self.learning_enabled = True
         self.use_sensors_for_model = False
 
