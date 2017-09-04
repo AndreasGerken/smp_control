@@ -82,6 +82,10 @@ class SMP_control(smp_thread_ros):
 
         # This array saves all sensor data
         self.x = np.zeros((self.numtimesteps, self.numsen))
+        self.x_pred = np.zeros((self.numsen, 1))
+
+        # Shows the prediction from just one motor + the bias
+        self.x_pred_coefficients = np.zeros((self.nummot_embedding + 1, self.numsen))
 
         # This array saves all motor data
         self.y = np.zeros((self.numtimesteps, self.nummot))
@@ -116,8 +120,8 @@ class SMP_control(smp_thread_ros):
 
         self.pickler = Pickler(self, self.numtimesteps)
         self.pickler.add_once_variables(
-            ['numtimesteps', 'cnt_main', 'x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding', 'pickle_name'])
-        self.pickler.add_frequent_variables(['A', 'b', 'C', 'h', 'xsi', 'EE'])
+            ['loop_time', 'numtimesteps', 'cnt_main', 'x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding', 'pickle_name'])
+        self.pickler.add_frequent_variables(['A', 'b', 'C', 'h', 'x_pred', 'x_pred_coefficients', 'xsi', 'EE'])
 
         self.pickle_name = args.pickle_name
         self.pickle_name_newest = 'newest.pickle'
@@ -251,8 +255,22 @@ class SMP_control(smp_thread_ros):
 
         # forward prediction error xsi
         # clipping prevents overflow in unstable episodes
+        self.x_pred = np.dot(self.A, y_lag_emb) + self.b
+
+        # check from which motor the prediction comes
+        for i in range(self.nummot_embedding + 1):
+            y_lag_emb_cutout = np.zeros_like(y_lag_emb)
+
+            if i != self.nummot_embedding:
+                y_lag_emb_cutout[i] = y_lag_emb[i]
+                bias = 0
+            else:
+                bias = 1
+
+            self.x_pred_coefficients[i] = (np.dot(self.A, y_lag_emb_cutout) + bias * self.b)[0]
+
         self.xsi = np.clip(
-            x_fut - (np.dot(self.A, y_lag_emb) + self.b), -1e+38, 1e+38)
+            x_fut - self.x_pred, -1e+38, 1e+38)
         self.xsi_avg = np.sum(np.abs(self.xsi)) * self.xsi_avg_smooth + \
             (1 - self.xsi_avg_smooth) * self.xsi_avg
 
@@ -355,7 +373,7 @@ class SMP_control(smp_thread_ros):
         if self.cnt_main != self.numtimesteps:
             user_input = raw_input(
                 "The run was not complete, do you still want to save it? (Y/N)")
-            if not user_input is "Y":
+            if not user_input.upper() is "Y":
                 return
 
         # save as newest

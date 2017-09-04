@@ -13,6 +13,7 @@ def add_specific_args(parser):
     return
 
 class PuppyConfigFindResonance(PuppyConfig):
+    # DELETE?
     def __init__(self,args):
         PuppyConfig.__init__
 

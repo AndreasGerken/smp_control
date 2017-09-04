@@ -2,8 +2,6 @@
 from robot_configs.puppy_configs.main_config import PuppyConfig
 import numpy as np
 
-# python smp_control.py robot_configs/puppy_configs/position_hk_hind_front.py -lt 0.01 -n 10000 -eC 0.1 -eA 0.005
-
 
 def get_class():
     return PuppyConfigPosition
@@ -13,25 +11,17 @@ class PuppyConfigPosition(PuppyConfig):
     def __init__(self, args):
         PuppyConfig.__init__(self, args)
 
-        #self.set_sensors(['acc', 'gyr', 'orient', 'motor_pos'])
-        #self.set_sensors(['acc', 'gyr', 'orient', 'motor_pos','euler'])
-        self.nummot = 2
+        self.set_sensors(['acc', 'gyr'])
 
-        self.set_sensors(['gyr', 'acc'])
-
-        self.lag = 20
-        self.embedding = 11
+        self.lag = 9
+        self.embedding = 1
         self.learning_enabled = True
         self.use_sensors_for_model = False
 
     def send_output(self, algorithm_output):
-
-        # repeat the output twice to control front and hind legs together
-        self.motor_position_commands = np.repeat(algorithm_output, 2) * 0.7
-
         # position control
-        self.motor_velocity = self.motor_position_estimate - self.motor_position_commands
-
+        self.motor_velocity = self.motor_position_estimate - algorithm_output
+        self.motor_position_commands = algorithm_output
         self.motor_position_estimate = self.motor_position_estimate * \
             0.3 + self.motor_position_commands * 0.7
 

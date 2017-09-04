@@ -58,8 +58,27 @@ class Analyzer():
         if self.cut <= 0 or self.cut > self.numtimesteps:
             self.cut = self.numtimesteps
 
+        self.loop_time = None
+        if "loop_time" in self.variable_dict:
+            self.loop_time = self.variable_dict['loop_time']
+
+        self.lag = self.variable_dict['lag']
+
         self.motor_commands = self.variable_dict["y"][:self.cut]
         self.sensor_values = self.variable_dict["x"][:self.cut]
+
+        self.x_pred = None
+        if "x_pred" in self.variable_dict:
+            self.sensor_prediction = self.variable_dict["x_pred"][:self.cut]
+        if "x_pred_coefficients" in self.variable_dict:
+            self.x_pred_coefficients = self.variable_dict["x_pred_coefficients"][:self.cut]
+
+        self.sensor_variance_each = np.var(self.sensor_values, axis=0)
+
+        # how to normalize? OSWALD
+        self.sensor_variance_each[:3] /= np.var(self.sensor_values[:,:3])
+        self.sensor_variance_each[3:] /= np.var(self.sensor_values[:,3:])
+
         self.timesteps = self.motor_commands.shape[0]
         self.nummot = self.motor_commands.shape[1]
         self.numsen = self.sensor_values.shape[1]
@@ -67,9 +86,19 @@ class Analyzer():
         self.windowsize = self.args.windowsize
         self.embsize = self.args.embsize
         self.hamming = self.args.hamming
+        self.extended = self.args.extended
 
         self.use_sensors = self.variable_dict["robot.use_sensors"]
         self.sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
+
+        self.epsA = self.variable_dict["epsA"]
+        self.epsC = self.variable_dict["epsC"]
+        self.creativity = self.variable_dict["creativity"]
+        self.xsi = self.variable_dict["xsi"]
+        self.ee = self.variable_dict["EE"]
+
+    def _save_image(self, fig, name):
+        fig.savefig(os.path.dirname(__file__) + '/' + name)
 
     def _prepare_sensor_names(self):
         xyz = ["x", "y","z"]
@@ -125,14 +154,187 @@ class Analyzer():
                              for i in range(0, testDataLimit - self.embsize)])
         motorembtest = np.array([self.motor_commands[i:i + self.embsize].flatten()
                                  for i in range(testDataLimit, self.timesteps - self.embsize)])
-        #self.sensor_values = self.sensor_values[:,3:]
-
-        # motoremb = self.motor_commands[:testDataLimit]
 
         self.trainingData = {
             "motor": motoremb, "sensor": self.sensor_values[self.embsize:testDataLimit]}
         self.testData = {"motor": motorembtest,
                          "sensor": self.sensor_values[testDataLimit + self.embsize:]}
+
+    """ ANALYZING FUNCTIONS """
+
+    def details(self):
+        print "--- Episode Details ---\n"
+        print "timesteps:\t", self.timesteps
+        print "looptime:\t", self.loop_time
+
+        print "--- Robot ---\n"
+        print "nummot\t:", self.nummot
+        print "numsen\t", self.numsen
+        print "sensors:\t%s" % ([name + ":[" + str(self.sensor_dimensions[name]) + "]" for name in self.use_sensors])
+
+        print "--- Learning variables ---\n"
+        print "epsA\t", self.epsA
+        print "epsC\t", self.epsC
+        print "Creativity\t", self.creativity
+
+
+    def time_series_motors_sensors(self):
+        """ This function can be used to show the time series of data """
+        # THIS IS USED AND TESTED FOR EXPERIMENT 1
+
+        print("The variance of the sensors = %s" % (str(self.sensor_variance_each)))
+
+        f, axarr = plt.subplots(len(self.use_sensors) + 1, 1, figsize=(20,12))
+
+        for motor in range(self.nummot):
+            axarr[0].plot(self.motor_commands[:, motor])
+            axarr[0].set_ylim([-1.1, 1.1])
+        axarr[0].set_title("Motor Commands")
+
+        sensor_index = 0
+        for sensor in range(len(self.use_sensors)):
+            sensor_name = self.use_sensors[sensor]
+            for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
+                if sensor_name in self.sensor_name_extensions:
+                    _label = self.sensor_name_extensions[sensor_name][dim]
+                else:
+                    _label = str(dim)
+                axarr[sensor + 1].plot(self.sensor_values[:, sensor_index], label= _label)
+
+                if sensor_name in self.sensor_name_long:
+                    title = self.sensor_name_long[sensor_name]
+                else:
+                    title = sensor_name
+
+
+                axarr[sensor + 1].set_title(title)
+                sensor_index += 1
+            axarr[sensor +1 ].legend()
+        f.tight_layout()
+        self._save_image(f, 'img/time_series_motor_sensors.png')
+        plt.show()
+
+    def time_series_sensor_prediction(self):
+        """ This function can be used to show the prediction of the sensor data through the model """
+        # THIS IS USED AND TESTED FOR EXPERIMENT 3
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-dimensions", "--show_dimensions", type=int, default = 0)
+        args, unknown_args = parser.parse_known_args()
+
+        #print self.sensor_prediction.shape
+
+        if args.show_dimensions == 0 or args.show_dimensions > self.numsen:
+            show_sensors = self.numsen
+        else:
+            show_sensors = args.show_dimensions
+
+        f, axarr = plt.subplots(show_sensors + 1, figsize=(20,10))
+
+        for motor in range(self.nummot):
+            axarr[0].plot(self.motor_commands[self.lag:, motor], label="motor " + str(motor + 1))
+            axarr[0].set_ylim([-1.1, 1.1])
+            axarr[0].legend()
+        axarr[0].set_title("Motor Commands")
+
+        error = self.sensor_values[:-self.lag] - self.sensor_prediction[:-self.lag,:,0]
+
+        i = 0
+
+        #print self.x_pred_coefficients[:-self.lag, :, 0]
+        #print self.sensor_prediction[:-self.lag,0]
+        for sensor in range(len(self.use_sensors)):
+            sensor_name = self.use_sensors[sensor]
+            for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
+                pred = self.sensor_prediction[:-self.lag,i,0]
+
+                # normal plot
+                axarr[i + 1].plot(self.sensor_values[:-self.lag,i], label="sensor measurement")
+                axarr[i + 1].plot(pred, label="prediction")
+
+                # cut between bias and motor pred
+                if hasattr(self, 'x_pred_coefficients'):
+                    motor_pred = np.sum(self.x_pred_coefficients[:-self.lag, :self.nummot, i], axis = 1)
+                    bias_pred = self.x_pred_coefficients[:-self.lag, self.nummot, i]
+
+                    pred[np.where(pred == 0)] = 1
+                    motor_pred[np.where(motor_pred == 0)] = 1
+                    bias_pred[np.where(bias_pred == 0)] = 1
+                    print pred
+                    print motor_pred
+                    print bias_pred
+
+                    axarr[i + 1].plot(motor_pred, label="motor_prediction")
+                    axarr[i + 1].plot(bias_pred , label="bias")
+
+
+
+                # title
+                title = self.sensor_names_with_dimensions[i]
+
+                axarr[i + 1].set_title(title)
+                i+=1
+
+                if i >= show_sensors:
+                    break
+            if i >= show_sensors:
+                break
+        plt.legend()
+        f.tight_layout()
+        self._save_image(f, '/img/time_series_pred.png')
+
+        #plt.figure()
+
+
+        #plt.plot(error)
+        plt.show()
+
+    def learn_motor_sensor_linear_new(self):
+        """
+        This mode learns the sensor responses from the motor commands with
+        linear regression and tests the result.
+        """
+        # THIS IS USED AND TESTED FOR EXPERIMENT 2
+
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-extended", "--extended", type=bool, default = False)
+        parser.add_argument("-lag", "--lag", type=int, default = 1)
+        args, unknown_args = parser.parse_known_args()
+
+        self.sensor_values -= np.mean(self.sensor_values, axis=0)
+        self._prepare_data_for_learning()
+
+        if args.extended:
+            self.trainingData["motor"] = np.zeros_like(self.trainingData["motor"])
+            self.testData["motor"] = np.zeros_like(self.testData["motor"])
+
+            self.trainingData["motor"] = np.hstack((self.trainingData["motor"][:-args.lag], self.trainingData["sensor"][args.lag:]))
+            self.testData["motor"] = np.hstack((self.testData["motor"][:-args.lag], self.testData["sensor"][args.lag:]))
+
+            self.trainingData["sensor"] = self.trainingData["sensor"][:-args.lag]
+            self.testData["sensor"] = self.testData["sensor"][:-args.lag]
+
+
+        regr = linear_model.Ridge(alpha=5.)
+        regr.fit(self.trainingData["motor"], self.trainingData["sensor"])
+        predTest = regr.predict(self.testData["motor"])
+
+        mse = np.mean((predTest - self.testData["sensor"]) ** 2)
+        print mse
+
+        f, ax = plt.subplots(2,3, sharey=True, sharex=True, figsize=(20,12))
+        plt.rc('font', family='serif', size=30)
+
+
+        for i in range(self.numsen):
+            ax[i/3, i%3].plot(predTest[:,i])
+            ax[i/3, i%3].plot(self.testData["sensor"][:,i])
+            plt.xticks(np.arange(0,400,100))
+        f.tight_layout()
+        self._save_image(f, 'img/sensor_motor_linear.png')
+
+        plt.show()
+
 
     def step_sweep(self):
         if not 'robot.step_length' in self.variable_dict:
@@ -261,40 +463,7 @@ class Analyzer():
         cbar.set_label("angle before step")
         f.subplots_adjust(left=None, bottom=None, right=None, top=None, wspace=None, hspace=None)
         f.tight_layout()
-        f.savefig('img/stepResponseAccelY.png')
-        plt.show()
-
-    def time_series_motors_sensors(self):
-        """ This function can be used to show the time series of data """
-        # THIS IS USED AND TESTED FOR EXPERIMENT 2
-
-        f, axarr = plt.subplots(len(self.use_sensors) + 1, 1, figsize=(20,12))
-
-        for motor in range(self.nummot):
-            axarr[0].plot(self.motor_commands[:, motor])
-        axarr[0].set_title("Motor Commands")
-
-        sensor_index = 0
-        for sensor in range(len(self.use_sensors)):
-            sensor_name = self.use_sensors[sensor]
-            for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
-                if sensor_name in self.sensor_name_extensions:
-                    _label = self.sensor_name_extensions[sensor_name][dim]
-                else:
-                    _label = str(dim)
-                axarr[sensor + 1].plot(self.sensor_values[:, sensor_index], label= _label)
-
-                if sensor_name in self.sensor_name_long:
-                    title = self.sensor_name_long[sensor_name]
-                else:
-                    title = sensor_name
-
-
-                axarr[sensor + 1].set_title(title)
-                sensor_index += 1
-            axarr[sensor +1 ].legend()
-        f.tight_layout()
-        f.savefig('img/time_series_motor_sensors.png')
+        self._save_image(f, 'img/stepResponseAccelY.png')
         plt.show()
 
 
@@ -444,7 +613,7 @@ class Analyzer():
         plt.xlim(0, self.timesteps / 20)
         plt.xticks(np.linspace(0, 50, 11))
         plt.tight_layout()
-        fig.savefig('correlations.png')
+        self._save_image(fig,'img/correlations.png')
         plt.show()
         # print allAverageSquaredCorrelations
 
@@ -561,113 +730,6 @@ class Analyzer():
                 plt.plot(sen_pred[:, i], c='r', alpha=0.7)
         plt.show()
 
-    def learn_motor_sensor_linear_new(self):
-        """
-        This mode learns the sensor responses from the motor commands with
-        linear regression and tests the result.
-        """
-        # THIS IS USED AND TESTED FOR EXPERIMENT 1
-
-        self.sensor_values -= np.mean(self.sensor_values, axis=0)
-        self._prepare_data_for_learning()
-
-
-        regr = linear_model.Ridge(alpha=5.)
-        regr.fit(self.trainingData["motor"], self.trainingData["sensor"])
-        predTest = regr.predict(self.testData["motor"])
-
-        mse = np.mean((predTest - self.testData["sensor"]) ** 2)
-
-        print mse
-
-        f, ax = plt.subplots(2,3, sharey=True, sharex=True, figsize=(20,12))
-        plt.rc('font', family='serif', size=30)
-
-
-        for i in range(self.numsen):
-            ax[i/3, i%3].plot(predTest[:,i])
-            ax[i/3, i%3].plot(self.testData["sensor"][:,i])
-            plt.xticks(np.arange(0,400,100))
-        f.tight_layout()
-        f.savefig('img/sensor_motor_linear.png')
-        plt.show()
-
-    def learn_motor_sensor_linear(self):
-        """
-        This mode learns the sensor responses from the motor commands with
-        linear regression and tests the result
-        """
-
-        self._prepare_data_for_learning()
-
-        # regr = linear_model.LinearRegression()
-        regr = linear_model.Ridge(alpha=10.0)
-        #regr = kernel_ridge.KernelRidge(alpha = 0.5, kernel="rbf")
-        regr.fit(self.trainingData["motor"], self.trainingData["sensor"])
-
-        # A,b Matrices from online learner for
-        # python analyze_pickle.py -f ../goodPickles/recording_eC0.70_eA0.01_c0.50_n1000_id0.pickle -m lin -es 1
-
-        """
-        regr.coef_ = np.array([[ 0.03122893, -0.01962895, -0.08606354, -0.17203238],
-                         [-0.01257594, -0.19804437, -0.05068203,  0.03037255],
-                         [-0.02674586,  0.01104205,  0.02475127,  0.09052899],
-                         [ 0.25470938,  0.15598333,  0.1278085,  0.20791332],
-                         [ 0.15407881, -0.09799728, -0.07484991, -0.04812915],
-                         [-0.36372194,  0.40417843, -0.22249272, -0.01279415]])
-
-        regr.intersept_ = np.array([0.23388626,-0.46302744, -3.22338203, 0.00920198, -0.07409651, -0.03185829])
-        """
-
-        # predict the sensor data from the motor data
-        predTest = regr.predict(self.testData["motor"])
-
-        print "coeffs: " + str(regr.coef_) + "\n"
-
-        # find the absolute sum of the coeffitients corresponding to the lag coefs[max] is zero lag
-        coefs = np.sum(np.sum(np.abs(regr.coef_), axis=0).reshape(
-            (4, self.embsize)), axis=0)
-        print coefs
-        print np.argmax(coefs)
-
-        # calculate mean squared error of the test data
-        mse = np.mean((predTest - self.testData["sensor"]) ** 2)
-
-        #print("trainingError: %.2f" %np.mean((regr.predict(trainingData["motor"]) - trainingData["sensor"]) ** 2))
-        print("Mean squared error: %.2f, s = %s" %
-              (mse, np.var(self.testData["sensor"], axis=0)))
-
-        # plot the coefficient sum
-        plt.plot(coefs, label="coefefs over lag")
-
-        fig, axs = plt.subplots(nrows=3, ncols=4)
-
-        bins = np.linspace(-2, 2, 15)
-        for j, ax in enumerate(axs.reshape(-1)):
-            i = j / 2
-
-            predError = predTest[:, i] - self.testData["sensor"][:, i]
-
-            # get the sensor values without mean
-            zmData = self.testData["sensor"][:, i] - \
-                np.mean(self.testData["sensor"][:, i])
-
-            # plot time series
-            if j % 2 == 0:
-                ax.plot(self.testData["sensor"][:, i])
-                ax.plot(predTest[:, i])
-            else:
-                """
-                plot a histogram of the prediction error and the zero mean
-                data, the prediction error should be sharper than the signal
-                distribution
-                """
-                data = np.vstack([predError, zmData]).T
-                ax.hist(data, bins=bins, alpha=1, label=[
-                        "predictionError", "meanedData"])
-                ax.legend()
-
-        plt.show()
 
     def find_best_embsize(self):
         max_embsize = 50
@@ -724,7 +786,7 @@ class Analyzer():
 
             # plt.draw()
             # plt.show()
-            #plt.savefig("scattermatrix%d.jpg" %(part))
+
             #print("scatter %d saved" %(part))
             plt.show()
 
@@ -922,19 +984,6 @@ class Analyzer():
 
         plt.show()
 
-    def details(self):
-        epsA = self.variable_dict["epsA"]
-        epsC = self.variable_dict["epsC"]
-        creativity = self.variable_dict["creativity"]
-        x = self.variable_dict["x"]
-        y = self.variable_dict["y"]
-        xsi = self.variable_dict["xsi"]
-        ee = self.variable_dict["EE"]
-        print "epsA\t", epsA
-        print "epsC\t", epsC
-        print "Creativity\t", creativity
-
-
     def split_sensors_effects_smooth(self):
         # TODO: not functional
         # C=self.variable_dict["C"]
@@ -984,7 +1033,9 @@ class Analyzer():
         # plt.legend()
         plt.show()
 
-    def model_matrix_plot(self):
+    def matrices_coefficients(self):
+        # USED FOR EXPERIMENT 5
+
         onePlot = True
         oneColorPerSensor = False
         labelForEachCoefficient = True
@@ -1107,17 +1158,17 @@ if __name__ == "__main__":
     function_dict = {
         'ts': Analyzer.time_series,
         'ts_ms': Analyzer.time_series_motors_sensors,
+        'ts_pred': Analyzer.time_series_sensor_prediction,
         'split_sensors': Analyzer.split_sensors_effects_smooth,
         'cor': Analyzer.correlation_func,
         'scat': Analyzer.scattermatrix_func,
         'anim_scat': Analyzer.animate_scatter,
         'spect': Analyzer.spectogram_func,
-        'lin': Analyzer.learn_motor_sensor_linear,
         'lin_cross': Analyzer.learn_motor_sensor_linear_cross,
         'lin_new': Analyzer.learn_motor_sensor_linear_new,
         'mlp_cross': Analyzer.learn_motor_sensor_mlp_cross,
         'gmm': Analyzer.learn_motor_sensor_gmm,
-        'model_matrix_plot': Analyzer.model_matrix_plot,
+        'matrices_coefficients': Analyzer.matrices_coefficients,
         'model_matrix_animate': Analyzer.model_matrix_animate,
         'model_matrix_plot_smooth': Analyzer.model_matrix_plot_smooth,
         'find_emb': Analyzer.find_best_embsize,
@@ -1139,9 +1190,15 @@ if __name__ == "__main__":
     parser.add_argument("-w", "--windowsize", type=int,
                         help="correlation window size", default=100)
     parser.add_argument("-es", "--embsize", type=int,
-                        help="history time steps for learning", default=15)
+                        help="history time steps for learning", default=1)
+    parser.add_argument("-extended", "--extended", type=int,
+                        help="toggle extended model", default=1)
     parser.add_argument("-cut", "--cut", type=int, help="Cut of the graph after 'cut' timesteps.", default=0)
-    args = parser.parse_args()
+    args, unknown_args = parser.parse_known_args()
+
+    if unknown_args:
+        warnings.warn("Unknown arguments were parsed in smp_control. They will be parsed by the robot configuration again:")
+        print "unknown_args: %s" % str(unknown_args)
 
     if(args.filename == None and args.randomFile == False):
         print("Please select file with\n-f ../foo.pickle or -r for random file\n")
