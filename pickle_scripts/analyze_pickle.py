@@ -11,6 +11,7 @@ from matplotlib import cm
 from sklearn import datasets, linear_model
 from sklearn import kernel_ridge
 from sklearn.mixture import GaussianMixture as GMM
+from igmm_cond import IGMM_COND
 from sklearn.neural_network import MLPRegressor
 
 
@@ -58,14 +59,13 @@ class Analyzer():
         if self.cut <= 0 or self.cut > self.numtimesteps:
             self.cut = self.numtimesteps
 
+        self.lag = self.variable_dict['lag']
+        self.motor_commands = self.variable_dict["y"][:self.cut]
+        self.sensor_values = self.variable_dict["x"][:self.cut]
+
         self.loop_time = None
         if "loop_time" in self.variable_dict:
             self.loop_time = self.variable_dict['loop_time']
-
-        self.lag = self.variable_dict['lag']
-
-        self.motor_commands = self.variable_dict["y"][:self.cut]
-        self.sensor_values = self.variable_dict["x"][:self.cut]
 
         self.x_pred = None
         if "x_pred" in self.variable_dict:
@@ -73,11 +73,14 @@ class Analyzer():
         if "x_pred_coefficients" in self.variable_dict:
             self.x_pred_coefficients = self.variable_dict["x_pred_coefficients"][:self.cut]
 
+        self.use_sensors = self.variable_dict["robot.use_sensors"]
+        self.sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
+
         self.sensor_variance_each = np.var(self.sensor_values, axis=0)
 
         # how to normalize? OSWALD
-        self.sensor_variance_each[:3] /= np.var(self.sensor_values[:,:3])
-        self.sensor_variance_each[3:] /= np.var(self.sensor_values[:,3:])
+        #self.sensor_variance_each[:3] /= np.var(self.sensor_values[:,:3])
+        #self.sensor_variance_each[3:] /= np.var(self.sensor_values[:,3:])
 
         self.timesteps = self.motor_commands.shape[0]
         self.nummot = self.motor_commands.shape[1]
@@ -88,8 +91,6 @@ class Analyzer():
         self.hamming = self.args.hamming
         self.extended = self.args.extended
 
-        self.use_sensors = self.variable_dict["robot.use_sensors"]
-        self.sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
 
         self.epsA = self.variable_dict["epsA"]
         self.epsC = self.variable_dict["epsC"]
@@ -253,7 +254,7 @@ class Analyzer():
                 axarr[i + 1].plot(pred, label="prediction")
 
                 # cut between bias and motor pred
-                if hasattr(self, 'x_pred_coefficients'):
+                if hasattr(self, 'x_pred_coefficients') and False:
                     motor_pred = np.sum(self.x_pred_coefficients[:-self.lag, :self.nummot, i], axis = 1)
                     bias_pred = self.x_pred_coefficients[:-self.lag, self.nummot, i]
 
@@ -322,18 +323,123 @@ class Analyzer():
         mse = np.mean((predTest - self.testData["sensor"]) ** 2)
         print mse
 
-        f, ax = plt.subplots(2,3, sharey=True, sharex=True, figsize=(20,12))
+        f, ax = plt.subplots(3,2, sharey=True, sharex=True, figsize=(20,12))
         plt.rc('font', family='serif', size=30)
 
-
         for i in range(self.numsen):
-            ax[i/3, i%3].plot(predTest[:,i])
-            ax[i/3, i%3].plot(self.testData["sensor"][:,i])
+            ax[i%3, i/3].plot(predTest[:,i], label='sensor prediction')
+            ax[i%3, i/3].plot(self.testData["sensor"][:,i], label='sensor measurements')
             plt.xticks(np.arange(0,400,100))
-        f.tight_layout()
+
+        # Put a legend below current axis
+        ax[2,0].legend( bbox_to_anchor=(2, -0.05),
+          fancybox=True, shadow=True, ncol=5)
+        #f.tight_layout()
         self._save_image(f, 'img/sensor_motor_linear.png')
 
         plt.show()
+
+    def learn_motor_sensor_gmm(self):
+        """
+        This mode learns the sensor responses from the motor commands with
+        gaussian mixture models and tests the result
+        """
+
+        # TODO Does it work? got stuck
+
+        for emb in range(1, 100):
+            self.embsize = emb
+
+            x = []
+            score = []
+            avg_x = []
+            avg_sc = []
+
+            self._prepare_data_for_learning()
+            for k in range(5, 6):
+                sum_sc = 0
+                for i in range(0, 5):
+                    gmm = GMM(n_components=k, covariance_type='full')
+                    gmm.fit(self.trainingData["motor"],
+                            self.trainingData["sensor"])
+                    sc = gmm.score(
+                        self.testData["motor"], self.testData["sensor"])
+                    print "%d score %.2f" % (k, sc)
+                    x.append(k)
+                    score.append(sc)
+                    sum_sc += sc
+                avg_x.append(k)
+                avg_sc.append(sum_sc / 5.)
+
+            plt.plot(x, score, 'o', label=emb)
+            plt.plot(avg_x, avg_sc)
+        plt.legend()
+        plt.show()
+
+        return 0
+
+    def learn_motor_sensor_igmm(self):
+        # TODO: USE FOR EXPERIMENT
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-dimensions", "--show_dimensions", type=int, default = 0)
+        args, unknown_args = parser.parse_known_args()
+
+
+        self._prepare_data_for_learning()
+
+        trainingDataAll = np.hstack((self.trainingData["motor"], self.trainingData["sensor"]))
+        testDataAll = np.hstack((self.testData["motor"], self.testData["sensor"]))
+        testDataNan = np.hstack((self.testData["motor"], np.full_like(self.testData["sensor"], np.nan)))
+        testDataSampled = np.zeros_like(testDataNan)
+
+        print trainingDataAll.shape
+        print testDataAll.shape
+
+        gmm = IGMM_COND(min_components=3, max_components=60)
+        print "training..."
+        gmm.train(trainingDataAll)
+        print "sampling..."
+        for i in range(testDataNan.shape[0]):
+            testDataSampled[i,:] = gmm.sample_cond_dist(testDataNan[i,:], n_samples=1)
+
+        print "plotting"
+
+
+        if args.show_dimensions == 0 or args.show_dimensions > self.numsen:
+            show_sensors = self.numsen
+        else:
+            show_sensors = args.show_dimensions
+        i = 0
+        f, axarr = plt.subplots(show_sensors + 1, figsize=(20,10))
+
+
+        #print self.x_pred_coefficients[:-self.lag, :, 0]
+        #print self.sensor_prediction[:-self.lag,0]
+        for sensor in range(len(self.use_sensors)):
+            sensor_name = self.use_sensors[sensor]
+            for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
+                pred = testDataSampled[:-self.lag,i]
+
+                # normal plot
+                axarr[i + 1].plot(testDataAll[:-self.lag, i + self.nummot], label="sensor measurement")
+                axarr[i + 1].plot(testDataSampled[:-self.lag, i + self.nummot], label="prediction")
+
+                # title
+                title = self.sensor_names_with_dimensions[i]
+
+                axarr[i + 1].set_title(title)
+                i+=1
+
+                if i >= show_sensors:
+                    break
+            if i >= show_sensors:
+                break
+        plt.legend()
+        f.tight_layout()
+        self._save_image(f, 'img/igmm_pred.png')
+        plt.show()
+
+
 
 
     def step_sweep(self):
@@ -525,6 +631,8 @@ class Analyzer():
             # shape = (timestep, motorChannel, buffer)
 
             window = self.motor_commands[i:i + self.windowsize, :]
+            var = np.var(window, axis=0)
+
             # print "windooriginal", window
 
             windowfunction = np.hamming(self.windowsize)
@@ -537,9 +645,14 @@ class Analyzer():
             # normalize
             for x in range(4):
                 for j in range(4):
+                    #correlations[x, j] = correlations[x, j] / \
+                    #    np.sqrt(correlationsGlobal[x, x]
+                    #            * correlationsGlobal[j, j])
+
+                    # normalize by the average variance of both
                     correlations[x, j] = correlations[x, j] / \
-                        np.sqrt(correlationsGlobal[x, x]
-                                * correlationsGlobal[j, j])
+                        ((var[x] + var[j])/2)
+
 
             if self.hamming:
                 correlations[:, :] *= self.windowsize / np.sum(windowfunction)
@@ -617,42 +730,6 @@ class Analyzer():
         plt.show()
         # print allAverageSquaredCorrelations
 
-    def learn_motor_sensor_gmm(self):
-        """
-        This mode learns the sensor responses from the motor commands with
-        gaussian mixture models and tests the result
-        """
-
-        for emb in range(1, 100):
-            self.embsize = emb
-
-            x = []
-            score = []
-            avg_x = []
-            avg_sc = []
-
-            self._prepare_data_for_learning()
-            for k in range(5, 6):
-                sum_sc = 0
-                for i in range(0, 10):
-                    gmm = GMM(n_components=k, covariance_type='full')
-                    gmm.fit(self.trainingData["motor"],
-                            self.trainingData["sensor"])
-                    sc = gmm.score(
-                        self.testData["motor"], self.testData["sensor"])
-                    print "%d score %.2f" % (k, sc)
-                    x.append(k)
-                    score.append(sc)
-                    sum_sc += sc
-                avg_x.append(k)
-                avg_sc.append(sum_sc / 10.)
-
-            plt.plot(x, score, 'o', label=emb)
-            plt.plot(avg_x, avg_sc)
-        plt.legend()
-        plt.show()
-
-        return 0
 
     def learn_motor_sensor_mlp_cross(self):
         fig = plt.figure()
@@ -773,14 +850,15 @@ class Analyzer():
             combinedData = np.hstack(
                 (self.motor_commands[partS:partE, :], self.sensor_values[partS:partE, :]))
 
-            df = pd.DataFrame(combinedData, columns=[
-                              'm1', 'm2', 'm3', 'm4', 's1', 's2', 's3', 's4', 's5', 's6'])
+            columns = np.concatenate((['m'+str(i) for i in range(self.nummot)], ['s'+str(i) for i in range(self.numsen)]))
+            print columns
+            df = pd.DataFrame(combinedData, columns=columns)
 
             scatterm = scatter_matrix(df, alpha=0.4, s=25, figsize=(
                 12, 12), diagonal='kde', c=c, edgecolors='none')
 
-            for x in range(10):
-                for y in range(10):
+            for x in range(self.nummot + self.numsen):
+                for y in range(self.nummot + self.numsen):
                     scatterm[x, y].set_ylim(-1.5, 1.5)
                     scatterm[x, y].set_xlim(-1.5, 1.5)
 
@@ -911,35 +989,72 @@ class Analyzer():
     def animate_scatter(self):
         import matplotlib.animation as animation
         global motorGlobal, sensorGlobal, i
+
+        # TODO: Fix for all axis or remove
+
         i = 0
         fig = plt.figure(self.filename)
 
-        motorGlobal = self.motor_commands[:, 0]
+        motorGlobal = self.motor_commands
         sensorGlobal = self.sensor_values
 
-        datax = motorGlobal[i:i + 100]
+        data_m1 = motorGlobal[i:i + 100, 0]
+        data_m2 = motorGlobal[i:i + 100, 1]
+        data_m3 = motorGlobal[i:i + 100, 2]
+        data_m4 = motorGlobal[i:i + 100, 3]
         datay1 = sensorGlobal[i:i + 100, 0]
-        datay2 = sensorGlobal[i:i + 100, 2]
-        datay3 = sensorGlobal[i:i + 100, 3]
+        datay2 = sensorGlobal[i:i + 100, 1]
+        datay3 = sensorGlobal[i:i + 100, 2]
 
-        ax1 = plt.subplot(131)
-        scat1 = plt.scatter(datax, datay1, animated=True)
-        # plt.set_xlim(1000,2000)
-        # plt.set_ylim(1000,2000)
 
-        ax2 = plt.subplot(132)
-        scat2 = plt.scatter(datax, datay2, animated=True)
 
-        ax3 = plt.subplot(133)
-        scat3 = plt.scatter(datax, datay3, animated=True)
+        ax1 = plt.subplot(331)
+        scat1 = plt.scatter(data_m1, datay1, animated=True)
 
-        ax1.set_xlim(np.min(motorGlobal), np.max(motorGlobal))
-        ax2.set_xlim(np.min(motorGlobal), np.max(motorGlobal))
-        ax3.set_xlim(np.min(motorGlobal), np.max(motorGlobal))
+        ax2 = plt.subplot(332)
+        scat2 = plt.scatter(data_m1, datay2, animated=True)
+
+        ax3 = plt.subplot(333)
+        scat3 = plt.scatter(data_m1, datay3, animated=True)
+
+        ax4 = plt.subplot(334)
+        scat4 = plt.scatter(data_m2, datay1, animated=True)
+
+        ax5 = plt.subplot(335)
+        scat5 = plt.scatter(data_m2, datay2, animated=True)
+
+        ax6 = plt.subplot(336)
+        scat6 = plt.scatter(data_m2, datay3, animated=True)
+
+        ax7 = plt.subplot(337)
+        scat7 = plt.scatter(data_m3, datay1, animated=True)
+
+        ax8 = plt.subplot(338)
+        scat8 = plt.scatter(data_m3, datay2, animated=True)
+
+        ax9 = plt.subplot(339)
+        scat9 = plt.scatter(data_m3, datay3, animated=True)
+
+
+        ax1.set_xlim(np.min(motorGlobal[:,0]), np.max(motorGlobal[:,0]))
+        ax2.set_xlim(np.min(motorGlobal[:,0]), np.max(motorGlobal[:,0]))
+        ax3.set_xlim(np.min(motorGlobal[:,0]), np.max(motorGlobal[:,0]))
+        ax4.set_xlim(np.min(motorGlobal[:,1]), np.max(motorGlobal[:,1]))
+        ax5.set_xlim(np.min(motorGlobal[:,1]), np.max(motorGlobal[:,1]))
+        ax6.set_xlim(np.min(motorGlobal[:,1]), np.max(motorGlobal[:,1]))
+        ax7.set_xlim(np.min(motorGlobal[:,2]), np.max(motorGlobal[:,2]))
+        ax8.set_xlim(np.min(motorGlobal[:,2]), np.max(motorGlobal[:,2]))
+        ax9.set_xlim(np.min(motorGlobal[:,2]), np.max(motorGlobal[:,2]))
 
         ax1.set_ylim(np.min(sensorGlobal[:, 0]), np.max(sensorGlobal[:, 0]))
         ax2.set_ylim(np.min(sensorGlobal[:, 1]), np.max(sensorGlobal[:, 1]))
         ax3.set_ylim(np.min(sensorGlobal[:, 2]), np.max(sensorGlobal[:, 2]))
+        ax4.set_ylim(np.min(sensorGlobal[:, 0]), np.max(sensorGlobal[:, 0]))
+        ax5.set_ylim(np.min(sensorGlobal[:, 1]), np.max(sensorGlobal[:, 1]))
+        ax6.set_ylim(np.min(sensorGlobal[:, 2]), np.max(sensorGlobal[:, 2]))
+        ax7.set_ylim(np.min(sensorGlobal[:, 0]), np.max(sensorGlobal[:, 0]))
+        ax8.set_ylim(np.min(sensorGlobal[:, 1]), np.max(sensorGlobal[:, 1]))
+        ax9.set_ylim(np.min(sensorGlobal[:, 2]), np.max(sensorGlobal[:, 2]))
 
         def updatefig(*args):
             global motorGlobal, sensorGlobal, i
@@ -947,15 +1062,35 @@ class Analyzer():
 
                 pts = 100
                 data1 = np.vstack(
-                    (motorGlobal[i:i + pts], sensorGlobal[i:i + pts, 0])).T
+                    (motorGlobal[i:i + pts,0], sensorGlobal[i:i + pts, 0])).T
                 data2 = np.vstack(
-                    (motorGlobal[i:i + pts], sensorGlobal[i:i + pts, 1])).T
+                    (motorGlobal[i:i + pts,0], sensorGlobal[i:i + pts, 1])).T
                 data3 = np.vstack(
-                    (motorGlobal[i:i + pts], sensorGlobal[i:i + pts, 2])).T
+                    (motorGlobal[i:i + pts,0], sensorGlobal[i:i + pts, 2])).T
+
+                data4 = np.vstack(
+                    (motorGlobal[i:i + pts,1], sensorGlobal[i:i + pts, 0])).T
+                data5 = np.vstack(
+                    (motorGlobal[i:i + pts,1], sensorGlobal[i:i + pts, 1])).T
+                data6 = np.vstack(
+                    (motorGlobal[i:i + pts,1], sensorGlobal[i:i + pts, 2])).T
+
+                data7 = np.vstack(
+                    (motorGlobal[i:i + pts,2], sensorGlobal[i:i + pts, 0])).T
+                data8 = np.vstack(
+                    (motorGlobal[i:i + pts,2], sensorGlobal[i:i + pts, 1])).T
+                data9 = np.vstack(
+                    (motorGlobal[i:i + pts,2], sensorGlobal[i:i + pts, 2])).T
 
                 scat1.set_offsets(data1)
                 scat2.set_offsets(data2)
                 scat3.set_offsets(data3)
+                scat4.set_offsets(data4)
+                scat5.set_offsets(data5)
+                scat6.set_offsets(data6)
+                scat7.set_offsets(data7)
+                scat8.set_offsets(data8)
+                scat9.set_offsets(data9)
 
                 # scat1.set_ydata()
 
@@ -1168,6 +1303,7 @@ if __name__ == "__main__":
         'lin_new': Analyzer.learn_motor_sensor_linear_new,
         'mlp_cross': Analyzer.learn_motor_sensor_mlp_cross,
         'gmm': Analyzer.learn_motor_sensor_gmm,
+        'igmm': Analyzer.learn_motor_sensor_igmm,
         'matrices_coefficients': Analyzer.matrices_coefficients,
         'model_matrix_animate': Analyzer.model_matrix_animate,
         'model_matrix_plot_smooth': Analyzer.model_matrix_plot_smooth,
