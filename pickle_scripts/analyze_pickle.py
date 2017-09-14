@@ -177,13 +177,12 @@ class Analyzer():
         return (x - np.mean(x, axis = 0)) ** 2
 
     def _pointwise_hamming_variance(self, data):
-        print data.shape
         # calculate the pointwise variance
         x = self._pointwise_variance(data)
 
         # create hamming window and normalize it
         windowfunction = np.hamming(self.windowsize)
-        windowfunction /= np.sum(windowfunction)
+        #windowfunction /= np.sum(windowfunction)
 
         result = np.zeros((self.numtimesteps-self.windowsize, self.numsen))
 
@@ -323,6 +322,7 @@ class Analyzer():
         parser.add_argument('-pMse', '--plotMse', type=bool, default = False)
         parser.add_argument('-pVar', '--plotVar', type=bool, default = False)
         parser.add_argument('-pMseNorm', '--plotMseNorm', type=bool, default = False)
+        # TODO Make the bool args setable without writing the 1
 
         args, unknown_args = parser.parse_known_args()
 
@@ -355,7 +355,14 @@ class Analyzer():
         if args.plotMseNorm:
             num_subplots += 1
 
-        f, axarr = plt.subplots(num_subplots, figsize=(20,10), sharex=True)
+        params = {'legend.fontsize': 'large',
+          'figure.figsize': (20, 10),
+         'axes.labelsize': 'large',
+         'axes.titlesize':'large',
+         'xtick.labelsize':'large',
+         'ytick.labelsize':'large'}
+        plt.rcParams.update(params)
+        f, axarr = plt.subplots(num_subplots, sharex=True)
 
         cnt_subplot = 0
 
@@ -376,16 +383,13 @@ class Analyzer():
 
             i = 0
 
-
-            #print self.x_pred_coefficients[:-self.lag, :, 0]
-            #print self.sensor_prediction[:-self.lag,0]
             for sensor in range(len(self.use_sensors)):
                 sensor_name = self.use_sensors[sensor]
                 for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
                     pred = self.sensor_prediction[:-self.lag,i]
                     selected_ax = axarr[cnt_subplot + i]
                     # normal plot
-                    selected_ax.plot(self.sensor_values[:-self.lag,i], label="sensor measurement")
+                    selected_ax.plot(self.sensor_values[:-self.lag,i], label="measurement")
                     selected_ax.plot(pred, label="prediction")
 
                     # cut between bias and motor pred
@@ -403,7 +407,14 @@ class Analyzer():
                     # title
                     title = self.sensor_name_long[sensor_name] + " " + self.sensor_name_extensions[sensor_name][dim]
 
+                    if i == 0:
+                        selected_ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),
+          ncol=2, fancybox=True, shadow=True)
                     selected_ax.set_title(title)
+                    selected_ax.set_ylim([-2, 2.5])
+                    selected_ax.set_yticks(np.arange(-2, 2.5, 1))
+                    selected_ax.set_ylabel("$[rad/sec]$")
+                    selected_ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
                     i+=1
 
                     if i >= show_sensors:
@@ -414,55 +425,25 @@ class Analyzer():
             # increment the subplot counter
             cnt_subplot += show_sensors
 
-        # Preparation for printing the mse and normalized mse
-        # pred_error = self.sensor_prediction_error
-        # print np.mean(pred_error)
-        #
-        # #self.sensor_value_variance_ham = self._pointwise_hamming_variance(self.sensor_values)
-        # #self.sensor_prediction_variance_ham = self._pointwise_hamming_variance(self.sensor_prediction)
-        # #self.sensor_prediction_error_variance_ham = self._pointwise_hamming_variance(self.sensor_prediction_error)
-        #
-        #
-        # mse = np.zeros((self.numtimesteps - self.windowsize, self.numsen))
-        # mse_norm = np.zeros_like(mse)
-        # stddev = np.zeros((mse.shape[0]))
-        #
-        # for i in range(self.numtimesteps - self.windowsize):
-        #     window_sensors = self.sensor_values[i:i + self.windowsize]
-        #     window_pe = pred_error[i: i+self.windowsize]
-        #
-        #     # print "windooriginal", window
-        #
-        #     windowfunction = np.hamming(self.windowsize)
-        #     windowfunction /= np.sum(windowfunction)
-        #
-        #     window_sensors_ham = window_sensors
-        #     window_pe_ham = window_pe
-        #
-        #     if(self.hamming):
-        #         window_sensors_ham = (window_sensors.T * windowfunction).T
-        #         window_pe_ham = (window_pe.T * windowfunction).T
-        #
-        #
-        #     stddev[i] = np.var(window_sensors_ham)
-        #
-        #     #mse[i] = np.mean(np.abs(window_pe_ham / (np.max(window_sensors, axis = 0) - np.min(window_sensors, axis = 0))))
-        #
-        #     mse[i] = np.mean(window_pe_ham**2, axis = 0)
-        #     mse_norm[i] = np.mean((window_pe_ham**2) / stddev[i], axis=0)
-
         x = np.arange(0, self.numtimesteps - self.windowsize, 1) + (self.windowsize/2)
 
         if args.plotMse:
             #axarr[cnt_subplot].plot(x, mse)
             axarr[cnt_subplot].plot(x, self.sensor_prediction_error_variance_ham)
-            axarr[cnt_subplot].set_title("Mean squared error")
+            axarr[cnt_subplot].plot(x, np.mean(self.sensor_prediction_error_variance_ham, axis = 1), color='k', linewidth = 2, linestyle="--")
+            axarr[cnt_subplot].grid(linestyle='--', linewidth=1, alpha = 0.2)
+            axarr[cnt_subplot].set_title("Squared error through sliding window")
+            axarr[cnt_subplot].legend(["x", "y", "z", "average"], loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
+            axarr[cnt_subplot].set_ylim([0,0.19])
+            axarr[cnt_subplot].set_yticks(np.arange(0,0.19, 0.04))
             cnt_subplot += 1
 
         if args.plotVar:
             #axarr[cnt_subplot].plot(x, stddev)
             axarr[cnt_subplot].plot(x, self.sensor_value_variance_ham)
             axarr[cnt_subplot].set_title("Variance")
+
+            selected_ax.legend()
             cnt_subplot += 1
 
         if args.plotMseNorm:
@@ -471,13 +452,19 @@ class Analyzer():
             #for i in range(self.numsen):
                 #pe_norm[:,i] /= np.mean(self.sensor_value_variance_ham, axis = 1)
 
-            axarr[cnt_subplot].plot(x, pe_norm**2)
-            axarr[cnt_subplot].plot(x, np.mean(pe_norm**2, axis = 1), color='k', linewidth = 2)
+            axarr[cnt_subplot].plot(x, pe_norm)
+            axarr[cnt_subplot].plot(x, np.mean(pe_norm, axis = 1), color='k', linewidth = 2, linestyle="--")
             axarr[cnt_subplot].grid(linestyle='--', linewidth=1, alpha = 0.2)
-            axarr[cnt_subplot].set_title("Normalized mean squared error")
+            axarr[cnt_subplot].set_title("Normalized squared error through sliding window")
+            #axarr[cnt_subplot].legend(["x", "y", "z", "average"], loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
+            axarr[cnt_subplot].set_yticks(np.arange(0,1.6, 0.3))
+            plt.annotate('local minimum', xy=(2150, 0.6), xytext=(2150, 1.2), arrowprops=dict(facecolor='black', shrink=0.05), fontsize='large')
+            plt.annotate('global minimum', xy=(5520, 0.40), xytext=(5300, 1.0), arrowprops=dict(facecolor='black', shrink=0.05), fontsize='large')
             cnt_subplot += 1
 
         plt.xlim([args.xlim_start, args.xlim_end])
+        plt.xticks(np.arange(args.xlim_start, args.xlim_end + 1, 500))
+        plt.xlabel("timesteps")
 
         plt.legend()
         f.tight_layout()
