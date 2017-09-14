@@ -13,7 +13,7 @@ from sklearn import kernel_ridge
 from sklearn.mixture import GaussianMixture as GMM
 from igmm_cond import IGMM_COND
 from sklearn.neural_network import MLPRegressor
-
+from scipy import signal
 
 pickleFolder = '../pickles_new_body/'
 #pickleFolder = '../goodPickles/'
@@ -48,6 +48,7 @@ class Analyzer():
 
         self._extract_all_variables()
         self._prepare_sensor_names()
+        self._sliding_window_variance()
 
 
     """ HELPER FUNCTIONS """
@@ -69,13 +70,15 @@ class Analyzer():
 
         self.x_pred = None
         if "x_pred" in self.variable_dict:
-            self.sensor_prediction = self.variable_dict["x_pred"][:self.cut]
+            self.sensor_prediction = self.variable_dict["x_pred"][:self.cut][:,:,0]
+            self.sensor_prediction_error = self.sensor_values - self.sensor_prediction
+
         if "x_pred_coefficients" in self.variable_dict:
             self.x_pred_coefficients = self.variable_dict["x_pred_coefficients"][:self.cut]
 
         self.use_sensors = self.variable_dict["robot.use_sensors"]
         self.sensor_dimensions = self.variable_dict["robot.sensor_dimensions"]
-
+        self.classname = self.variable_dict["robot.classname"]
         self.sensor_variance_each = np.var(self.sensor_values, axis=0)
 
         # how to normalize? OSWALD
@@ -87,6 +90,7 @@ class Analyzer():
         self.numsen = self.sensor_values.shape[1]
 
         self.windowsize = self.args.windowsize
+        self.windowsize_half = self.windowsize / 2
         self.embsize = self.args.embsize
         self.hamming = self.args.hamming
         self.extended = self.args.extended
@@ -98,15 +102,20 @@ class Analyzer():
         self.xsi = self.variable_dict["xsi"]
         self.ee = self.variable_dict["EE"]
 
-    def _save_image(self, fig, name):
-        fig.savefig(os.path.dirname(__file__) + '/' + name)
+    def _save_image(self, fig, name, tight=None):
+        if tight:
+            fig.savefig(os.path.dirname(__file__) + '/' + name, bbox_inches='tight')
+        else:
+            fig.savefig(os.path.dirname(__file__) + '/' + name)
 
     def _prepare_sensor_names(self):
         xyz = ["x", "y","z"]
         xyzw = ["x", "y", "z","w"]
         self.sensor_name_extensions = {"acc" : xyz, "gyr" : xyz, "orient" : xyzw, "euler:" : xyz}
         self.sensor_name_long = {"acc": "Accelerometer", "gyr": "Gyroscope", "orient": "Orientation", "rot": "Rotation"}
+        self.sensor_units = {"acc":"m/s^2", "gyr":"rad/s"}
         self.sensor_names_with_dimensions = self._get_sensor_names_with_dimensions()
+
 
     def _get_sensor_names_with_dimensions(self):
         """ This function reads the used sensors from the variable dict and
@@ -148,7 +157,7 @@ class Analyzer():
         use_sensor_dimensions = [self.sensor_dimensions[sensor] for sensor in self.use_sensors]
         return np.cumsum(use_sensor_dimensions)
 
-    def _prepare_data_for_learning(self):
+    def _prepare_data_for_learning(self, normalizeByStd=False):
         testDataLimit = 4 * self.timesteps / 5
 
         motoremb = np.array([self.motor_commands[i:i + self.embsize].flatten()
@@ -156,10 +165,42 @@ class Analyzer():
         motorembtest = np.array([self.motor_commands[i:i + self.embsize].flatten()
                                  for i in range(testDataLimit, self.timesteps - self.embsize)])
 
+        if normalizeByStd:
+            self.sensor_values /= np.std(self.sensor_values, axis = 0)
+
         self.trainingData = {
             "motor": motoremb, "sensor": self.sensor_values[self.embsize:testDataLimit]}
         self.testData = {"motor": motorembtest,
                          "sensor": self.sensor_values[testDataLimit + self.embsize:]}
+
+    def _pointwise_variance(self, x):
+        return (x - np.mean(x, axis = 0)) ** 2
+
+    def _pointwise_hamming_variance(self, data):
+        print data.shape
+        # calculate the pointwise variance
+        x = self._pointwise_variance(data)
+
+        # create hamming window and normalize it
+        windowfunction = np.hamming(self.windowsize)
+        windowfunction /= np.sum(windowfunction)
+
+        result = np.zeros((self.numtimesteps-self.windowsize, self.numsen))
+
+        # apply the window function and calculate the mean
+        for i in range(self.numtimesteps - self.windowsize):
+            window = x[i: i + self.windowsize]
+            window_ham = (window.T * windowfunction).T
+
+            result[i,:] = np.mean(window_ham, axis = 0).flatten()
+
+        return result
+
+
+    def _sliding_window_variance(self):
+        self.sensor_value_variance_ham = self._pointwise_hamming_variance(self.sensor_values)
+        self.sensor_prediction_variance_ham = self._pointwise_hamming_variance(self.sensor_prediction)
+        self.sensor_prediction_error_variance_ham = self._pointwise_hamming_variance(self.sensor_prediction_error - np.mean(self.sensor_prediction_error, axis = 0))
 
     """ ANALYZING FUNCTIONS """
 
@@ -169,6 +210,7 @@ class Analyzer():
         print "looptime:\t", self.loop_time
 
         print "--- Robot ---\n"
+        print "class\t:", self.classname
         print "nummot\t:", self.nummot
         print "numsen\t", self.numsen
         print "sensors:\t%s" % ([name + ":[" + str(self.sensor_dimensions[name]) + "]" for name in self.use_sensors])
@@ -178,6 +220,38 @@ class Analyzer():
         print "epsC\t", self.epsC
         print "Creativity\t", self.creativity
 
+
+    def time_series(self):
+        """ This function can be used to show the time series of data """
+
+        # TODO REPAIR?
+
+        cut = self.variable_dict["numtimesteps"]
+        x = self.sensor_values
+        y = self.motor_commands
+        xsi = self.variable_dict["xsi"][:cut]
+        ee = self.variable_dict["EE"][:cut]
+
+        f, axarr = plt.subplots(4, 1)
+        plt.rc('font', family='serif', size=30)
+
+        for sen in range(x.shape[1]):
+            axarr[0].plot(x[:, sen], label=self.sensor_names_with_dimensions[sen])
+        axarr[0].set_title("Sensors")
+        axarr[0].legend()
+
+        axarr[1].plot(y)
+
+        for i in range(xsi.shape[1]):
+            axarr[2].plot(xsi[:, i, 0])
+        axarr[2].set_title("xsi")
+
+        axarr[3].plot(ee)
+
+        f.subplots_adjust(hspace=0.3)
+        plt.legend()
+
+        plt.show()
 
     def time_series_motors_sensors(self):
         """ This function can be used to show the time series of data """
@@ -204,7 +278,9 @@ class Analyzer():
 
                 if sensor_name in self.sensor_name_long:
                     title = self.sensor_name_long[sensor_name]
+
                 else:
+
                     title = sensor_name
 
 
@@ -215,71 +291,194 @@ class Analyzer():
         self._save_image(f, 'img/time_series_motor_sensors.png')
         plt.show()
 
+    def hist(self):
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-s", "--source", type=str, help="[m = motor, s= sensor]", default = "m")
+        args, unknown_args = parser.parse_known_args()
+
+        if args.source == "m":
+            source = self.motor_commands
+        else:
+            source = self.sensor_values
+
+        f = plt.figure()
+        plt.hist(source, label=["M1", "M2", "M3", "M4"], bins= 10)
+        plt.ylabel=""
+        plt.legend()
+        self._save_image(f, 'img/hist.png')
+        plt.show()
+
     def time_series_sensor_prediction(self):
         """ This function can be used to show the prediction of the sensor data through the model """
         # THIS IS USED AND TESTED FOR EXPERIMENT 3
 
         parser = argparse.ArgumentParser()
         parser.add_argument("-dimensions", "--show_dimensions", type=int, default = 0)
+        parser.add_argument("-filter", "--filter_cutoff", type=float, default = 0.5)
+        parser.add_argument("-xs", '--xlim_start', type= int, default = 0)
+        parser.add_argument('-xe', '--xlim_end', type=int, default = self.numtimesteps)
+        parser.add_argument('-pMotor', '--plotMotor', type=bool, default = False)
+        parser.add_argument('-pSensors', '--plotSensors', type=bool, default = True)
+        parser.add_argument('-pSensorsCut', '--plotSensorsCut', type=bool, default = False)
+        parser.add_argument('-pMse', '--plotMse', type=bool, default = False)
+        parser.add_argument('-pVar', '--plotVar', type=bool, default = False)
+        parser.add_argument('-pMseNorm', '--plotMseNorm', type=bool, default = False)
+
         args, unknown_args = parser.parse_known_args()
 
-        #print self.sensor_prediction.shape
+        cut_begin = 1000
+        cut_end = 2000
 
-        if args.show_dimensions == 0 or args.show_dimensions > self.numsen:
-            show_sensors = self.numsen
-        else:
-            show_sensors = args.show_dimensions
+        b, a = signal.butter(8, args.filter_cutoff)
+        self.sensor_values = signal.filtfilt(b, a, self.sensor_values, padlen=150, axis =0 )
+        self.sensor_prediction = signal.filtfilt(b, a, self.sensor_prediction, padlen=150, axis = 0)
 
-        f, axarr = plt.subplots(show_sensors + 1, figsize=(20,10))
+        # calculate the number of subplots
+        num_subplots = 0
+        if args.plotMotor:
+            num_subplots += 1
 
-        for motor in range(self.nummot):
-            axarr[0].plot(self.motor_commands[self.lag:, motor], label="motor " + str(motor + 1))
-            axarr[0].set_ylim([-1.1, 1.1])
-            axarr[0].legend()
-        axarr[0].set_title("Motor Commands")
+        if args.plotSensors:
+            if args.show_dimensions == 0 or args.show_dimensions > self.numsen:
+                show_sensors = self.numsen
+            else:
+                show_sensors = args.show_dimensions
 
-        error = self.sensor_values[:-self.lag] - self.sensor_prediction[:-self.lag,:,0]
+            num_subplots += show_sensors
 
-        i = 0
+        if args.plotMse:
+            num_subplots += 1
 
-        #print self.x_pred_coefficients[:-self.lag, :, 0]
-        #print self.sensor_prediction[:-self.lag,0]
-        for sensor in range(len(self.use_sensors)):
-            sensor_name = self.use_sensors[sensor]
-            for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
-                pred = self.sensor_prediction[:-self.lag,i,0]
+        if args.plotVar:
+            num_subplots += 1
 
-                # normal plot
-                axarr[i + 1].plot(self.sensor_values[:-self.lag,i], label="sensor measurement")
-                axarr[i + 1].plot(pred, label="prediction")
+        if args.plotMseNorm:
+            num_subplots += 1
 
-                # cut between bias and motor pred
-                if hasattr(self, 'x_pred_coefficients') and False:
-                    motor_pred = np.sum(self.x_pred_coefficients[:-self.lag, :self.nummot, i], axis = 1)
-                    bias_pred = self.x_pred_coefficients[:-self.lag, self.nummot, i]
+        f, axarr = plt.subplots(num_subplots, figsize=(20,10), sharex=True)
 
-                    pred[np.where(pred == 0)] = 1
-                    motor_pred[np.where(motor_pred == 0)] = 1
-                    bias_pred[np.where(bias_pred == 0)] = 1
-                    print pred
-                    print motor_pred
-                    print bias_pred
+        cnt_subplot = 0
 
-                    axarr[i + 1].plot(motor_pred, label="motor_prediction")
-                    axarr[i + 1].plot(bias_pred , label="bias")
+        # Motors
+        if args.plotMotor:
+            for motor in range(self.nummot):
+                axarr[cnt_subplot].plot(self.motor_commands[self.lag:, motor], label="motor " + str(motor + 1))
+                axarr[cnt_subplot].set_ylim([-1.1, 1.1])
+                axarr[cnt_subplot].legend()
+            axarr[cnt_subplot].set_title("Motor Commands")
+
+            # increment the subplot counter
+            cnt_subplot+=1
+
+        # Sensors with their prediction
+        if args.plotSensors:
+            error = self.sensor_values[:-self.lag] - self.sensor_prediction[:-self.lag]
+
+            i = 0
 
 
+            #print self.x_pred_coefficients[:-self.lag, :, 0]
+            #print self.sensor_prediction[:-self.lag,0]
+            for sensor in range(len(self.use_sensors)):
+                sensor_name = self.use_sensors[sensor]
+                for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
+                    pred = self.sensor_prediction[:-self.lag,i]
+                    selected_ax = axarr[cnt_subplot + i]
+                    # normal plot
+                    selected_ax.plot(self.sensor_values[:-self.lag,i], label="sensor measurement")
+                    selected_ax.plot(pred, label="prediction")
 
-                # title
-                title = self.sensor_names_with_dimensions[i]
+                    # cut between bias and motor pred
+                    if hasattr(self, 'x_pred_coefficients') and args.plotSensorsCut:
+                        motor_pred = np.sum(self.x_pred_coefficients[:-self.lag, :self.nummot, i], axis = 1)
+                        bias_pred = self.x_pred_coefficients[:-self.lag, self.nummot, i]
 
-                axarr[i + 1].set_title(title)
-                i+=1
+                        pred[np.where(pred == 0)] = 1
+                        motor_pred[np.where(motor_pred == 0)] = 1
+                        bias_pred[np.where(bias_pred == 0)] = 1
 
+                        selected_ax.plot(motor_pred, label="motor_prediction")
+                        selected_ax.plot(bias_pred , label="bias")
+
+                    # title
+                    title = self.sensor_name_long[sensor_name] + " " + self.sensor_name_extensions[sensor_name][dim]
+
+                    selected_ax.set_title(title)
+                    i+=1
+
+                    if i >= show_sensors:
+                        break
                 if i >= show_sensors:
                     break
-            if i >= show_sensors:
-                break
+
+            # increment the subplot counter
+            cnt_subplot += show_sensors
+
+        # Preparation for printing the mse and normalized mse
+        # pred_error = self.sensor_prediction_error
+        # print np.mean(pred_error)
+        #
+        # #self.sensor_value_variance_ham = self._pointwise_hamming_variance(self.sensor_values)
+        # #self.sensor_prediction_variance_ham = self._pointwise_hamming_variance(self.sensor_prediction)
+        # #self.sensor_prediction_error_variance_ham = self._pointwise_hamming_variance(self.sensor_prediction_error)
+        #
+        #
+        # mse = np.zeros((self.numtimesteps - self.windowsize, self.numsen))
+        # mse_norm = np.zeros_like(mse)
+        # stddev = np.zeros((mse.shape[0]))
+        #
+        # for i in range(self.numtimesteps - self.windowsize):
+        #     window_sensors = self.sensor_values[i:i + self.windowsize]
+        #     window_pe = pred_error[i: i+self.windowsize]
+        #
+        #     # print "windooriginal", window
+        #
+        #     windowfunction = np.hamming(self.windowsize)
+        #     windowfunction /= np.sum(windowfunction)
+        #
+        #     window_sensors_ham = window_sensors
+        #     window_pe_ham = window_pe
+        #
+        #     if(self.hamming):
+        #         window_sensors_ham = (window_sensors.T * windowfunction).T
+        #         window_pe_ham = (window_pe.T * windowfunction).T
+        #
+        #
+        #     stddev[i] = np.var(window_sensors_ham)
+        #
+        #     #mse[i] = np.mean(np.abs(window_pe_ham / (np.max(window_sensors, axis = 0) - np.min(window_sensors, axis = 0))))
+        #
+        #     mse[i] = np.mean(window_pe_ham**2, axis = 0)
+        #     mse_norm[i] = np.mean((window_pe_ham**2) / stddev[i], axis=0)
+
+        x = np.arange(0, self.numtimesteps - self.windowsize, 1) + (self.windowsize/2)
+
+        if args.plotMse:
+            #axarr[cnt_subplot].plot(x, mse)
+            axarr[cnt_subplot].plot(x, self.sensor_prediction_error_variance_ham)
+            axarr[cnt_subplot].set_title("Mean squared error")
+            cnt_subplot += 1
+
+        if args.plotVar:
+            #axarr[cnt_subplot].plot(x, stddev)
+            axarr[cnt_subplot].plot(x, self.sensor_value_variance_ham)
+            axarr[cnt_subplot].set_title("Variance")
+            cnt_subplot += 1
+
+        if args.plotMseNorm:
+            #axarr[cnt_subplot].plot(x, mse/stddev)
+            pe_norm = self.sensor_prediction_error_variance_ham / self.sensor_value_variance_ham
+            #for i in range(self.numsen):
+                #pe_norm[:,i] /= np.mean(self.sensor_value_variance_ham, axis = 1)
+
+            axarr[cnt_subplot].plot(x, pe_norm**2)
+            axarr[cnt_subplot].plot(x, np.mean(pe_norm**2, axis = 1), color='k', linewidth = 2)
+            axarr[cnt_subplot].grid(linestyle='--', linewidth=1, alpha = 0.2)
+            axarr[cnt_subplot].set_title("Normalized mean squared error")
+            cnt_subplot += 1
+
+        plt.xlim([args.xlim_start, args.xlim_end])
+
         plt.legend()
         f.tight_layout()
         self._save_image(f, '/img/time_series_pred.png')
@@ -290,7 +489,58 @@ class Analyzer():
         #plt.plot(error)
         plt.show()
 
-    def learn_motor_sensor_linear_new(self):
+    def time_series_motor_estimate(self):
+        max_turning_speed_deg = 60 * 0.01 / 0.17
+        max_turning_speed_our_scale = max_turning_speed_deg * 2. / 180.
+        motor_estimate = np.zeros_like(self.motor_commands)
+
+        print max_turning_speed_our_scale
+        for i in range(self.numtimesteps):
+            if i == 0:
+                motor_estimate[0] = self.motor_commands[0]
+            else:
+                delta = self.motor_commands[i] - motor_estimate[i-1]
+
+                for j in range(delta.shape[0]):
+
+                    if np.abs(delta[j]) > max_turning_speed_our_scale:
+                        delta[j] = np.sign(delta[j]) * max_turning_speed_our_scale
+
+                motor_estimate[i] = motor_estimate[i - 1].copy() + delta
+
+        f = plt.figure(figsize = (10,5))
+        plt.title('Estimated motor position')
+        for i in range(self.nummot):
+            plt.plot(motor_estimate[:,i], label="M"+str(i) )
+        plt.legend()
+        self._save_image(f, '/img/time_series_motor_estimate.png')
+        plt.show()
+
+
+    def time_series_ham_var(self):
+        f = plt.figure(figsize = (20,10))
+        plt.plot(self.sensor_value_variance_ham)
+        #plt.plot(self.sensor_prediction_variance_ham)
+        #plt.plot(self.sensor_prediction_error_variance_ham)
+        self._save_image(f, '/img/time_series_variance_ham.png')
+        plt.show()
+
+    def fft(self):
+        from scipy.fftpack import fft, ifft
+        n = self.numtimesteps / 2
+        sampling_rate = 1. / 0.01
+
+        frequencies_sensors = ifft(self.sensor_values, axis = 0)
+        frequencies_predictions = ifft(self.sensor_prediction, axis = 0)
+
+        x = np.linspace(0, sampling_rate/2, n, endpoint=True)
+
+        plt.plot(x, np.mean(np.abs(frequencies_sensors[:n]), axis = 1))
+        plt.plot(x, np.mean(np.abs(frequencies_predictions[:n]), axis = 1))
+
+        plt.show()
+
+    def learn_motor_sensor_linear(self):
         """
         This mode learns the sensor responses from the motor commands with
         linear regression and tests the result.
@@ -320,63 +570,55 @@ class Analyzer():
         regr.fit(self.trainingData["motor"], self.trainingData["sensor"])
         predTest = regr.predict(self.testData["motor"])
 
-        mse = np.mean((predTest - self.testData["sensor"]) ** 2)
-        print mse
 
-        f, ax = plt.subplots(3,2, sharey=True, sharex=True, figsize=(20,12))
+        _var = np.std(self.sensor_values, axis=0)
+
+
+        mse = np.mean((predTest - self.testData["sensor"]) ** 2)
+        mse_var = np.mean(((predTest - self.testData["sensor"])/_var) ** 2)
+        print mse
+        print mse_var
+
+        _y_min = np.ceil(np.min(self.testData["sensor"]))
+        _y_max = np.floor(np.max(self.testData["sensor"]))
+        _y_ticks = np.arange(_y_min, _y_max + 1, 1)
+
+        f, ax = plt.subplots(3,2, sharey=True, sharex=True, figsize=(20,15))
+
+
         plt.rc('font', family='serif', size=30)
 
         for i in range(self.numsen):
-            ax[i%3, i/3].plot(predTest[:,i], label='sensor prediction')
-            ax[i%3, i/3].plot(self.testData["sensor"][:,i], label='sensor measurements')
-            plt.xticks(np.arange(0,400,100))
+            _x = i % 3
+            _y = i / 3
+            ax_selected = ax[_x, _y]
+            selected_sensor = self.use_sensors[_y]
+
+            ax_selected.plot(self.testData["sensor"][:,i], label='sensor measurements')
+            ax_selected.plot(predTest[:,i], label='sensor prediction')
+
+            ax_selected.grid(linestyle='--', linewidth=1, alpha = 0.2)
+            plt.yticks(_y_ticks)
+            plt.xticks(np.arange(0,predTest.shape[0],100))
+
+            if _y == 0:
+                ax_selected.set_ylabel(['x','y','z'][_x])
+
+            if _x == 0:
+                ax_selected.set_title(self.sensor_name_long[selected_sensor] + " in [$" + self.sensor_units[selected_sensor] + "$]", y = 1.08)
+            if _x == 2:
+                ax_selected.set_xlabel("timesteps")
 
         # Put a legend below current axis
-        ax[2,0].legend( bbox_to_anchor=(2, -0.05),
-          fancybox=True, shadow=True, ncol=5)
-        #f.tight_layout()
-        self._save_image(f, 'img/sensor_motor_linear.png')
+        ax[2,0].legend(loc='lower left', bbox_to_anchor=(0, -0.7),
+          fancybox=True, shadow=True, ncol=2)
+
+        f.tight_layout(pad=3, h_pad=0.4, w_pad = 0.3)
+
+        self._save_image(f, 'img/sensor_motor_linear.png', tight=True)
 
         plt.show()
 
-    def learn_motor_sensor_gmm(self):
-        """
-        This mode learns the sensor responses from the motor commands with
-        gaussian mixture models and tests the result
-        """
-
-        # TODO Does it work? got stuck
-
-        for emb in range(1, 100):
-            self.embsize = emb
-
-            x = []
-            score = []
-            avg_x = []
-            avg_sc = []
-
-            self._prepare_data_for_learning()
-            for k in range(5, 6):
-                sum_sc = 0
-                for i in range(0, 5):
-                    gmm = GMM(n_components=k, covariance_type='full')
-                    gmm.fit(self.trainingData["motor"],
-                            self.trainingData["sensor"])
-                    sc = gmm.score(
-                        self.testData["motor"], self.testData["sensor"])
-                    print "%d score %.2f" % (k, sc)
-                    x.append(k)
-                    score.append(sc)
-                    sum_sc += sc
-                avg_x.append(k)
-                avg_sc.append(sum_sc / 5.)
-
-            plt.plot(x, score, 'o', label=emb)
-            plt.plot(avg_x, avg_sc)
-        plt.legend()
-        plt.show()
-
-        return 0
 
     def learn_motor_sensor_igmm(self):
         # TODO: USE FOR EXPERIMENT
@@ -439,9 +681,6 @@ class Analyzer():
         self._save_image(f, 'img/igmm_pred.png')
         plt.show()
 
-
-
-
     def step_sweep(self):
         if not 'robot.step_length' in self.variable_dict:
             warnings.warn("this pickle file was not recorded in the step sweep mode")
@@ -497,7 +736,7 @@ class Analyzer():
         line_alpha = 0.5
         line_offset = 3.
 
-        line_offset = 0.
+        line_offset = 0.1
         for i in range(steps_max):
             j = steps_max - i - 1
 
@@ -521,8 +760,8 @@ class Analyzer():
                 #ax.plot(x, y_high, c=colors[i], lw=1, alpha=line_alpha, label=text)
 
                 im = ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=line_alpha, label=text)
-                ax.set_ylabel(self.sensor_names_with_dimension[dim])
-                ax.set_xlabel("ms")
+                ax.set_ylabel(self.sensor_names_with_dimensions[dim])
+                ax.set_xlabel("timesteps")
                 #plt.xticks(np.arange(0, cut_response, 1.0))
 
                 #axarr[1].plot(np.average(np.abs(responses[i,:,3:]), axis = 1)  + (i / repeat_step) * line_offset, c=colors[i], lw=1.5, alpha=line_alpha, label=text)
@@ -548,10 +787,11 @@ class Analyzer():
             else:
                 text = None
 
-            dim = 1
+
             x = range(cut_response)
-            y_avg = avg_responses[j,:,dim]
-            y_std = std_responses[j,:,dim]
+            y_avg = np.mean(np.abs(avg_responses[j,:,:]), axis=1)
+            y_std = np.mean(np.abs(std_responses[j,:,:]), axis = 1)
+            print y_avg.shape
             y_offset = y_avg + j * line_offset
             y_low = y_offset - y_std
             y_high = y_offset + y_std
@@ -563,6 +803,7 @@ class Analyzer():
 
             ax.set_ylabel("$m/s^2$", fontsize=40)
             ax.set_xlabel("$ms$", fontsize=40)
+            ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
         ax.set_title("acceleration - y", fontsize=40)
 
         cbar = plt.colorbar(CS3)
@@ -571,42 +812,6 @@ class Analyzer():
         f.tight_layout()
         self._save_image(f, 'img/stepResponseAccelY.png')
         plt.show()
-
-
-    def time_series(self):
-        """ This function can be used to show the time series of data """
-        cut = self.variable_dict["numtimesteps"]
-        x = self.sensor_values
-        y = self.motor_commands
-        xsi = self.variable_dict["xsi"][:cut]
-        ee = self.variable_dict["EE"][:cut]
-
-        f, axarr = plt.subplots(4, 1)
-        plt.rc('font', family='serif', size=30)
-
-        for sen in range(x.shape[1]):
-            axarr[0].plot(x[:, sen], label=self.sensor_names_with_dimensions[sen])
-        axarr[0].set_title("Sensors")
-        axarr[0].legend()
-
-        axarr[1].plot(y)
-
-        for i in range(xsi.shape[1]):
-            axarr[2].plot(xsi[:, i, 0])
-        axarr[2].set_title("xsi")
-
-        # smoothing_window_C = 500
-        # #for sen in range(xsi.shape[1]):
-        # tmp = np.average(np.abs([np.average(xsi[i+50:i+50+smoothing_window_C,:], axis=0) for i in range(xsi.shape[0]-smoothing_window_C-50)]),axis=1)
-        # axarr[2].plot(np.abs(tmp))
-        # axarr[2].set_title("xsi")
-
-        axarr[3].plot(ee)
-
-        f.subplots_adjust(hspace=0.3)
-        plt.legend()
-        plt.show()
-
 
 
     def correlation_func(self):
@@ -831,8 +1036,14 @@ class Analyzer():
         from pandas.tools.plotting import scatter_matrix
         import matplotlib.cm as cm
 
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-cuts", "--cuts", type=int, default = 1)
+        args, unknown_args = parser.parse_known_args()
+
+
         # settings, ammount of points in one graph and color mode
-        points_per_plot = 1000  # self.timesteps
+        points_per_plot = (int)(np.floor(self.timesteps / args.cuts))
+        print points_per_plot
         color = False
 
         if color:
@@ -868,73 +1079,120 @@ class Analyzer():
             #print("scatter %d saved" %(part))
             plt.show()
 
-    def spectogram_func(self):
-        loopsteps = self.timesteps - self.windowsize
+    def custom_scattermatrix(self):
+        color_cuts = 100
 
-        sensors = self.sensor_values[...]
-        self.numsen = sensors.shape[1]
-        s = sensors
+        motor_commands_parts = np.split(self.motor_commands, color_cuts, axis=0)
+        sensov_values_parts = np.split(self.sensor_values, color_cuts, axis=0)
 
-        print sensors.shape
+        f, ax = plt.subplots(self.nummot, self.numsen)
+        colors = cm.cool(np.linspace(0, 1, color_cuts))
 
-        import scipy.signal as sig
-
-        m = self.motor_commands
-        s = self.sensor_values
-
-        Mspecs = [sig.spectrogram(m[:, i], fs=20.0, nperseg=32, nfft=32)
-                  for i in range(self.nummot)]
-        Sspecs = [sig.spectrogram(s[:, i], fs=20.0, nperseg=32, nfft=32)
-                  for i in range(self.numsen)]
-
-        allSpecs = np.zeros((35, 0))
-
-        from matplotlib import gridspec
-        gs = gridspec.GridSpec(3, max(self.nummot, self.numsen) + 1)
-        fig = plt.figure()
-        ax1 = fig.add_subplot(gs[0, 0])
-        ax1.plot(sensors)
-        for i in range(self.numsen):
-            ax = fig.add_subplot(gs[0, 1 + i])
-
-            Mspec = Sspecs[i]
-            ax.pcolormesh(Mspec[1], Mspec[0], Mspec[2])
-
-            allSpecs = np.concatenate((allSpecs, Mspec[2].T), axis=1)
-
-        ax2 = fig.add_subplot(gs[1, 0])
-        ax2.plot(m)
-        for i in range(self.nummot):
-            ax = fig.add_subplot(gs[1, 1 + i])
-
-            Mspec = Mspecs[i]
-            ax.pcolormesh(Mspec[1], Mspec[0], Mspec[2])
-
-            allSpecs = np.concatenate((allSpecs, Mspec[2].T), axis=1)
-
-        # do k-means
-        from sklearn.cluster import KMeans
-        import matplotlib.cm
-
-        kmeans = KMeans(n_clusters=4, random_state=1)
-        kmeans.fit(allSpecs)
-        ax3 = fig.add_subplot(gs[2, 1])
-
-        ax3.scatter(range(len(allSpecs)), kmeans.predict(
-            allSpecs), c=np.linspace(0, 255, 35))
-
-        from sklearn import decomposition
-
-        pca = decomposition.PCA(n_components=2)
-        pca.fit(allSpecs)
-        ax4 = fig.add_subplot(gs[2, 2])
-        ax4.scatter(pca.transform(allSpecs)[:, 0], pca.transform(
-            allSpecs)[:, 1], c=np.linspace(0, 255, 35))
-
-        print(allSpecs.shape)
+        for m in range(self.nummot):
+            for s in range(self.numsen):
+                for p in range(color_cuts):
+                    ax[m,s].scatter(motor_commands_parts[p][:,m], sensov_values_parts[p][:,s], color=colors[p], alpha = 0.3)
         plt.show()
 
-        print sensors.shape
+    def position_to_sensors(self):
+        """ This function should be used with episodes recorded with a very slow sin_sweep."""
+        if not hasattr(self.variable_dict, 'robot.classname') or self.variable_dict['robot.classname'] != 'PuppyConfigSinSweep':
+            warnings.warn('This analyzing mode is made specifically for the sin sweep configuration, which was not detected.')
+
+        # Scatter for all sensors
+        part = self.numtimesteps / 16
+
+        f, ax = plt.subplots(3,2, sharex=True, figsize=(20,15))
+
+        #self.sensor_values -= np.mean(self.sensor_values, axis = 0)
+        #self.sensor_values /= np.std(self.sensor_values, axis = 0)
+
+        _xticks = np.linspace(-90,90,5)
+        _yticks_acc = np.linspace(-0.9,0.9,4)
+        _yticks_gyr = np.linspace(-0.15,0.15,3)
+        sensor_means = np.mean(self.sensor_values, axis = 0)
+
+        plt.rc('font', family='serif', size=30)
+
+        for i in range(self.numsen):
+            _x = i % 3
+            _y = i / 3
+            ax_selected = ax[_x, _y]
+            selected_sensor = self.use_sensors[_y]
+            for j in range(16):
+                if j%4 == 0 or j%4==3:
+                    #forward moving
+                    color = 'r'
+                else:
+                    #backward moving
+                    color = 'b'
+
+                ax_selected.scatter(self.motor_commands[part * j: part * (j + 1),0] * 90., self.sensor_values[part * j: part * (j + 1),i], alpha = 0.05, color=color)
+
+            #fake_scatter for legend
+            legend_scatter_forwards = ax_selected.scatter( np.NaN, np.NaN, marker = 'o', color='r', label='forwards' )
+            legend_scatter_backwards = ax_selected.scatter( np.NaN, np.NaN, marker = 'o', color='b', label='backwards' )
+
+
+            ax_selected.grid(linestyle='--', linewidth=1, alpha = 0.2)
+            #plt.yticks(_y_ticks)
+            plt.xticks(_xticks)
+
+            if _y == 0:
+                #accelerometer add xyz labels
+                ax_selected.set_ylabel(['x','y','z'][_x])
+                ax_selected.set_yticks(_yticks_acc + np.round(sensor_means[i], 1))
+            else:
+                #gyro
+                ax_selected.set_yticks(_yticks_gyr + np.round(sensor_means[i], 1))
+
+            if _x == 0:
+                # first row add titles
+                ax_selected.set_title(self.sensor_name_long[selected_sensor] + " in [$" + self.sensor_units[selected_sensor] + "$]", y = 1.08)
+            if _x == 2:
+                #last row add x units
+                ax_selected.set_xlabel("degrees")
+
+        # Put a legend below current axis
+        lgnd = ax[2,0].legend(loc='lower left', bbox_to_anchor=(0, -0.7),
+          fancybox=True, shadow=True, ncol=2)
+        lgnd.legendHandles[0]._sizes = [30]
+        lgnd.legendHandles[1]._sizes = [30]
+
+
+        f.tight_layout(pad=3, h_pad=0.4, w_pad = 0.3)
+        self._save_image(f, 'img/position_to_sensor.png', tight=True)
+
+        plt.show()
+
+
+        # Variance of all
+        # TODO: Not working
+        # steps = np.arange(np.min(self.motor_commands), np.max(self.motor_commands), 0.1)
+        # print steps
+        #
+        # variances = np.zeros((len(steps) - 1, self.numsen))
+        # means = np.zeros_like(variances)
+        # for i in range(len(steps) - 1):
+        #     indices = np.where(self.motor_commands[:,0] >= steps[i]) and np.where(self.motor_commands[:,0] <= steps[i + 1])
+        #     variances[i] = np.var(self.sensor_values[indices], axis = 0)
+        #     means[i] = np.average(self.sensor_values[indices], axis = 0)
+        #
+        # variances /= np.var(self.sensor_values, axis = 0)
+        # means -= np.average(self.sensor_values, axis = 0)
+        #
+        # plt.figure()
+        # colors = cm.cool(np.linspace(0, 1, self.numsen))
+        # x = np.arange(-1, 1, 2./variances.shape[0])
+        # for i in range(self.numsen):
+        #     print((means[:,i] - variances[:,i]).shape)
+        #     print((means[:,i] + variances[:,i]).shape)
+        #     print(x.shape)
+        #     plt.fill_between(x, means[:,i] - variances[:,i], means[:,i] + variances[:,i], facecolor = colors[i], alpha = 0.2)
+        #     #plt.plot(means)
+        #     #plt.plot(means + variances)
+
+        plt.show()
 
     def activity_plot(self):
         # TODO: erase or modify
@@ -985,168 +1243,6 @@ class Analyzer():
 
         plt.plot(sv_smooth)
         plt.show()
-
-    def animate_scatter(self):
-        import matplotlib.animation as animation
-        global motorGlobal, sensorGlobal, i
-
-        # TODO: Fix for all axis or remove
-
-        i = 0
-        fig = plt.figure(self.filename)
-
-        motorGlobal = self.motor_commands
-        sensorGlobal = self.sensor_values
-
-        data_m1 = motorGlobal[i:i + 100, 0]
-        data_m2 = motorGlobal[i:i + 100, 1]
-        data_m3 = motorGlobal[i:i + 100, 2]
-        data_m4 = motorGlobal[i:i + 100, 3]
-        datay1 = sensorGlobal[i:i + 100, 0]
-        datay2 = sensorGlobal[i:i + 100, 1]
-        datay3 = sensorGlobal[i:i + 100, 2]
-
-
-
-        ax1 = plt.subplot(331)
-        scat1 = plt.scatter(data_m1, datay1, animated=True)
-
-        ax2 = plt.subplot(332)
-        scat2 = plt.scatter(data_m1, datay2, animated=True)
-
-        ax3 = plt.subplot(333)
-        scat3 = plt.scatter(data_m1, datay3, animated=True)
-
-        ax4 = plt.subplot(334)
-        scat4 = plt.scatter(data_m2, datay1, animated=True)
-
-        ax5 = plt.subplot(335)
-        scat5 = plt.scatter(data_m2, datay2, animated=True)
-
-        ax6 = plt.subplot(336)
-        scat6 = plt.scatter(data_m2, datay3, animated=True)
-
-        ax7 = plt.subplot(337)
-        scat7 = plt.scatter(data_m3, datay1, animated=True)
-
-        ax8 = plt.subplot(338)
-        scat8 = plt.scatter(data_m3, datay2, animated=True)
-
-        ax9 = plt.subplot(339)
-        scat9 = plt.scatter(data_m3, datay3, animated=True)
-
-
-        ax1.set_xlim(np.min(motorGlobal[:,0]), np.max(motorGlobal[:,0]))
-        ax2.set_xlim(np.min(motorGlobal[:,0]), np.max(motorGlobal[:,0]))
-        ax3.set_xlim(np.min(motorGlobal[:,0]), np.max(motorGlobal[:,0]))
-        ax4.set_xlim(np.min(motorGlobal[:,1]), np.max(motorGlobal[:,1]))
-        ax5.set_xlim(np.min(motorGlobal[:,1]), np.max(motorGlobal[:,1]))
-        ax6.set_xlim(np.min(motorGlobal[:,1]), np.max(motorGlobal[:,1]))
-        ax7.set_xlim(np.min(motorGlobal[:,2]), np.max(motorGlobal[:,2]))
-        ax8.set_xlim(np.min(motorGlobal[:,2]), np.max(motorGlobal[:,2]))
-        ax9.set_xlim(np.min(motorGlobal[:,2]), np.max(motorGlobal[:,2]))
-
-        ax1.set_ylim(np.min(sensorGlobal[:, 0]), np.max(sensorGlobal[:, 0]))
-        ax2.set_ylim(np.min(sensorGlobal[:, 1]), np.max(sensorGlobal[:, 1]))
-        ax3.set_ylim(np.min(sensorGlobal[:, 2]), np.max(sensorGlobal[:, 2]))
-        ax4.set_ylim(np.min(sensorGlobal[:, 0]), np.max(sensorGlobal[:, 0]))
-        ax5.set_ylim(np.min(sensorGlobal[:, 1]), np.max(sensorGlobal[:, 1]))
-        ax6.set_ylim(np.min(sensorGlobal[:, 2]), np.max(sensorGlobal[:, 2]))
-        ax7.set_ylim(np.min(sensorGlobal[:, 0]), np.max(sensorGlobal[:, 0]))
-        ax8.set_ylim(np.min(sensorGlobal[:, 1]), np.max(sensorGlobal[:, 1]))
-        ax9.set_ylim(np.min(sensorGlobal[:, 2]), np.max(sensorGlobal[:, 2]))
-
-        def updatefig(*args):
-            global motorGlobal, sensorGlobal, i
-            if(i < self.timesteps - 101):
-
-                pts = 100
-                data1 = np.vstack(
-                    (motorGlobal[i:i + pts,0], sensorGlobal[i:i + pts, 0])).T
-                data2 = np.vstack(
-                    (motorGlobal[i:i + pts,0], sensorGlobal[i:i + pts, 1])).T
-                data3 = np.vstack(
-                    (motorGlobal[i:i + pts,0], sensorGlobal[i:i + pts, 2])).T
-
-                data4 = np.vstack(
-                    (motorGlobal[i:i + pts,1], sensorGlobal[i:i + pts, 0])).T
-                data5 = np.vstack(
-                    (motorGlobal[i:i + pts,1], sensorGlobal[i:i + pts, 1])).T
-                data6 = np.vstack(
-                    (motorGlobal[i:i + pts,1], sensorGlobal[i:i + pts, 2])).T
-
-                data7 = np.vstack(
-                    (motorGlobal[i:i + pts,2], sensorGlobal[i:i + pts, 0])).T
-                data8 = np.vstack(
-                    (motorGlobal[i:i + pts,2], sensorGlobal[i:i + pts, 1])).T
-                data9 = np.vstack(
-                    (motorGlobal[i:i + pts,2], sensorGlobal[i:i + pts, 2])).T
-
-                scat1.set_offsets(data1)
-                scat2.set_offsets(data2)
-                scat3.set_offsets(data3)
-                scat4.set_offsets(data4)
-                scat5.set_offsets(data5)
-                scat6.set_offsets(data6)
-                scat7.set_offsets(data7)
-                scat8.set_offsets(data8)
-                scat9.set_offsets(data9)
-
-                # scat1.set_ydata()
-
-                # scat2.set_xdata(motorGlobal[i:i+100])
-                # scat2.set_ydata(sensorGlobal[i:i+100,1])
-
-                # scat3.set_xdata(motorGlobal[i:i+100])
-                # scat3.set_ydata(sensorGlobal[i:i+100,2])
-
-                print "i = %d" % (i)
-                i += pts / 4
-
-            return scat1, scat2, scat3,
-        ani = animation.FuncAnimation(fig, updatefig, interval=50, blit=True)
-        plt.show()
-
-    def time_series_smoothing(self):
-        """ This is a special function for a tested feature of smoothing. It was used with the pendulum. """
-        x = self.variable_dict["x"]
-        y = self.variable_dict["y"]
-        sensors = 3
-        fig = plt.figure()
-        for i in range(sensors):
-            fig.add_subplot(sensors, 1, i + 1)
-            plt.plot(x[:, i::sensors])
-
-        plt.show()
-
-    def split_sensors_effects_smooth(self):
-        # TODO: not functional
-        # C=self.variable_dict["C"]
-        # x=self.variable_dict["x"]
-        # h=self.variable_dict["h"]
-        # sensors=3
-        # yp = np.zeros((x.shape[0],sensors + 1))
-        #
-        # print C.shape
-        # print x.shape
-        # print h.shape
-        #
-        #
-        # for j in range(sensors):
-        #     Cp = C[:,0,j::sensors]
-        #     hp = h[:,:]
-        #     xp = x[:,j::sensors]
-        #
-        #     for i in range(x.shape[0]):
-        #         yp[i,j] = np.dot(Cp[i], xp[i].T) + hp[i]
-        #         if(i>0):
-        #             yp[i,j] = yp[i,j] * 0.2 + yp[i-1,j] * 0.8
-        #
-        # yp[:,3] = yp[:,0] + yp[:,1] + yp[:,2]
-        #
-        # plt.plot(yp)
-        # plt.show()
-        return
 
     def model_matrix_plot_smooth(self):
         C = self.variable_dict["C"]
@@ -1291,26 +1387,28 @@ class Analyzer():
 
 if __name__ == "__main__":
     function_dict = {
-        'ts': Analyzer.time_series,
-        'ts_ms': Analyzer.time_series_motors_sensors,
-        'ts_pred': Analyzer.time_series_sensor_prediction,
-        'split_sensors': Analyzer.split_sensors_effects_smooth,
+        'details': Analyzer.details,                                # Check
+        'ts': Analyzer.time_series,                                 # Check
+        'ts_ms': Analyzer.time_series_motors_sensors,               # Check
+        'ts_pred': Analyzer.time_series_sensor_prediction,          # Check
+        'learn_linear': Analyzer.learn_motor_sensor_linear,
         'cor': Analyzer.correlation_func,
+        'pos_to_sen': Analyzer.position_to_sensors,
         'scat': Analyzer.scattermatrix_func,
-        'anim_scat': Analyzer.animate_scatter,
-        'spect': Analyzer.spectogram_func,
+        'scat_slim': Analyzer.custom_scattermatrix,
         'lin_cross': Analyzer.learn_motor_sensor_linear_cross,
-        'lin_new': Analyzer.learn_motor_sensor_linear_new,
         'mlp_cross': Analyzer.learn_motor_sensor_mlp_cross,
-        'gmm': Analyzer.learn_motor_sensor_gmm,
         'igmm': Analyzer.learn_motor_sensor_igmm,
         'matrices_coefficients': Analyzer.matrices_coefficients,
         'model_matrix_animate': Analyzer.model_matrix_animate,
         'model_matrix_plot_smooth': Analyzer.model_matrix_plot_smooth,
         'find_emb': Analyzer.find_best_embsize,
-        'activity': Analyzer.activity_plot2,
-        'details': Analyzer.details,
-        'step_sweep': Analyzer.step_sweep
+        'activity': Analyzer.activity_plot,
+        'step_sweep': Analyzer.step_sweep,
+        'fft': Analyzer.fft,
+        'hist': Analyzer.hist,
+        'ts_me': Analyzer.time_series_motor_estimate,
+        'ham_var' : Analyzer.time_series_ham_var,
     }
 
     parser = argparse.ArgumentParser(

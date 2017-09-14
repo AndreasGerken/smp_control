@@ -120,7 +120,7 @@ class SMP_control(smp_thread_ros):
 
         self.pickler = Pickler(self, self.numtimesteps)
         self.pickler.add_once_variables(
-            ['loop_time', 'numtimesteps', 'cnt_main', 'x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding', 'pickle_name'])
+            ['mode', 'loop_time', 'numtimesteps', 'cnt_main', 'x', 'y', 'epsC', 'epsA', 'creativity', 'nummot', 'numsen', 'lag', 'embedding', 'pickle_name'])
         self.pickler.add_frequent_variables(['A', 'b', 'C', 'h', 'x_pred', 'x_pred_coefficients', 'xsi', 'EE'])
 
         self.pickle_name = args.pickle_name
@@ -373,6 +373,7 @@ class SMP_control(smp_thread_ros):
         if self.cnt_main != self.numtimesteps:
             user_input = raw_input(
                 "The run was not complete, do you still want to save it? (Y/N)")
+            print user_input
             if not user_input.upper() is "Y":
                 return
 

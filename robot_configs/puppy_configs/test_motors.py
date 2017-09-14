@@ -22,15 +22,27 @@ class PuppyConfigSinSweep(PuppyConfig):
         self.use_sensors_for_model = False
 
     def send_output(self, algorithm_output):
-        # do one period
+        algorithm_output = np.zeros_like(algorithm_output)
 
-        parser = argparse.ArgumentParser()
-        parser.add_argument("-periods", "--periods", type=int, default = 0)
-        args, unknown_args = parser.parse_known_args()
+        if self.smp_control.cnt_main > 100:
+            algorithm_output[0] = 1
+        if self.smp_control.cnt_main > 200:
+            algorithm_output[1] = 1
+        if self.smp_control.cnt_main > 300:
+            algorithm_output[2] = 1
+        if self.smp_control.cnt_main > 400:
+            algorithm_output[3] = 1
 
-        phase = (self.smp_control.cnt_main / (float)(self.smp_control.numtimesteps)) * 2 * np.pi * args.periods
+        if self.smp_control.cnt_main > 500:
+            algorithm_output[0] = -1
+        if self.smp_control.cnt_main > 600:
+            algorithm_output[1] = -1
+        if self.smp_control.cnt_main > 700:
+            algorithm_output[2] = -1
+        if self.smp_control.cnt_main > 800:
+            algorithm_output[3] = -1
 
-        algorithm_output = np.array([np.sin(phase)] * 4)
+
         self.smp_control.y[self.smp_control.cnt_main,:] = algorithm_output
 
         # velocity control

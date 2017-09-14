@@ -11,7 +11,7 @@ class PuppyConfigPosition(PuppyConfig):
     def __init__(self, args):
         PuppyConfig.__init__(self, args)
 
-        self.set_sensors(['gyr'])
+        self.set_sensors(['acc'])
 
         self.lag = 9
         self.embedding = 1
@@ -32,8 +32,6 @@ class PuppyConfigPosition(PuppyConfig):
         self.smp_control.pub["_puppyMotor"].publish(self.msg_motors)
         self.smp_control.pub["_puppyMotorVelocity"].publish(
             self.msg_motors_velocity)
-
-        return self.motor_position_commands
 
 
 if __name__ == "__main__":

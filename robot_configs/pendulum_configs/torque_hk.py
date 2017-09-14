@@ -1,14 +1,14 @@
 #from puppy_config import PuppyConfig
-from robot_configs.puppy_configs.main_config import PuppyConfig
+from robot_configs.pendulum_configs.main_config import PendulumConfig
 
 def get_class():
     return PendulumTorqueHK
 
-class PendulumTorqueHK(PuppyConfig):
+class PendulumTorqueHK(PendulumConfig):
     def __init__(self,args):
         PuppyConfig.__init__(self,args)
 
-        self.set_sensors(['gyr', 'motor_pos'])
+        self.set_sensors(['poti'])
         self.lag = 4
         self.embedding = 1
         self.learning_enabled = True

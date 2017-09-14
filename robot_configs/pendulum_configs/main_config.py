@@ -36,15 +36,15 @@ class PendulumConfig(RobotConfig):
         self.use_sensors = None
         self.numsen = 0
 
-        self.set_sensors(['poti', 'poti_d', 'poti_integral'])
-        self.set_sensors(['poti'])
+        #self.set_sensors(['poti', 'poti_d', 'poti_integral'])
+        self.set_sensors(['poti','current'])
         #self.use_sensors = ['orient', 'motor_pos', 'gyr', 'acc']
 
         #self.numsen = np.sum([sensor_dimensions[sensor] for sensor in self.use_sensors])
         self.nummot = 1
-        self.lag = 1
-        self.embedding = 6
-        self.output_gain = 150
+        self.lag = 10
+        self.embedding = 1
+        self.output_gain = 250
 
         self.learning_enabled = True
         self.use_sensors_for_model = True
