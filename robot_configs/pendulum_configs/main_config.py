@@ -27,7 +27,7 @@ class PendulumConfig(RobotConfig):
                                   "motor_torque_abs": 1, "poti": 1, "poti_d": 1, "poti_integral": 1, "current": 1}
 
         self.smoothings = [0., 0.3, 0.5, 0.8, 0.9, 0.95, 0.99]
-        self.smoothings = [0,]
+        #self.smoothings = [0,]
 
         #self.smoothings = [0.]
         self.smoothing_length = len(self.smoothings)

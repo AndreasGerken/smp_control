@@ -48,7 +48,17 @@ class Analyzer():
 
         self._extract_all_variables()
         self._prepare_sensor_names()
-        self._sliding_window_variance()
+
+        if 'sensor_prediction' in self.variable_dict:
+            self._sliding_window_variance()
+
+        params = {'legend.fontsize': 'large',
+          'figure.figsize': (20, 10),
+         'axes.labelsize': 'large',
+         'axes.titlesize':'large',
+         'xtick.labelsize':'large',
+         'ytick.labelsize':'large'}
+        plt.rcParams.update(params)
 
 
     """ HELPER FUNCTIONS """
@@ -111,8 +121,8 @@ class Analyzer():
     def _prepare_sensor_names(self):
         xyz = ["x", "y","z"]
         xyzw = ["x", "y", "z","w"]
-        self.sensor_name_extensions = {"acc" : xyz, "gyr" : xyz, "orient" : xyzw, "euler:" : xyz}
-        self.sensor_name_long = {"acc": "Accelerometer", "gyr": "Gyroscope", "orient": "Orientation", "rot": "Rotation"}
+        self.sensor_name_extensions = {"acc" : xyz, "gyr" : xyz, "orient" : xyzw, "euler:" : xyz, "poti_integral":[""]}
+        self.sensor_name_long = {"acc": "Accelerometer", "gyr": "Gyroscope", "orient": "Orientation", "rot": "Rotation", "poti_integral": "Inegral of the Potentiometer"}
         self.sensor_units = {"acc":"m/s^2", "gyr":"rad/s"}
         self.sensor_names_with_dimensions = self._get_sensor_names_with_dimensions()
 
@@ -256,14 +266,22 @@ class Analyzer():
         """ This function can be used to show the time series of data """
         # THIS IS USED AND TESTED FOR EXPERIMENT 1
 
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-sync", "--synchronous_front_back", help="Argument to have front and hind legs synchronous", default = False, action='store_true')
+        args, unknown_args = parser.parse_known_args()
+
         print("The variance of the sensors = %s" % (str(self.sensor_variance_each)))
 
-        f, axarr = plt.subplots(len(self.use_sensors) + 1, 1, figsize=(20,12))
+        f, axarr = plt.subplots(len(self.use_sensors) + 1, 1, figsize=(20,12), sharex=True)
 
         for motor in range(self.nummot):
-            axarr[0].plot(self.motor_commands[:, motor])
-            axarr[0].set_ylim([-1.1, 1.1])
+            if args.synchronous_front_back and motor % 2 != 0:
+                axarr[0].plot(self.motor_commands[:, motor])
+        axarr[0].set_ylim([-1.1, 1.1])
         axarr[0].set_title("Motor Commands")
+
+        if args.synchronous_front_back:
+            axarr[0].legend(["front", "hind"])
 
         sensor_index = 0
         for sensor in range(len(self.use_sensors)):
@@ -277,15 +295,17 @@ class Analyzer():
 
                 if sensor_name in self.sensor_name_long:
                     title = self.sensor_name_long[sensor_name]
-
                 else:
-
                     title = sensor_name
 
-
                 axarr[sensor + 1].set_title(title)
+                axarr[sensor + 1].set_ylabel("$" + self.sensor_units[sensor_name] + "$")
                 sensor_index += 1
+
             axarr[sensor +1 ].legend()
+
+        axarr[sensor + 1].set_xlabel("timesteps ($10ms$)")
+
         f.tight_layout()
         self._save_image(f, 'img/time_series_motor_sensors.png')
         plt.show()
@@ -385,7 +405,7 @@ class Analyzer():
 
             for sensor in range(len(self.use_sensors)):
                 sensor_name = self.use_sensors[sensor]
-                for dim in range(self.sensor_dimensions[self.use_sensors[sensor]]):
+                for dim in range(7):
                     pred = self.sensor_prediction[:-self.lag,i]
                     selected_ax = axarr[cnt_subplot + i]
                     # normal plot
@@ -405,16 +425,18 @@ class Analyzer():
                         selected_ax.plot(bias_pred , label="bias")
 
                     # title
-                    title = self.sensor_name_long[sensor_name] + " " + self.sensor_name_extensions[sensor_name][dim]
+                    #print self.sensor_name_long[sensor_name]
+                    #print self.sensor_name_extensions[sensor_name]
+                    #title = self.sensor_name_long[sensor_name] + " " + self.sensor_name_extensions[sensor_name][dim]
 
-                    if i == 0:
-                        selected_ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),
-          ncol=2, fancybox=True, shadow=True)
-                    selected_ax.set_title(title)
-                    selected_ax.set_ylim([-2, 2.5])
-                    selected_ax.set_yticks(np.arange(-2, 2.5, 1))
-                    selected_ax.set_ylabel("$[rad/sec]$")
-                    selected_ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
+                    #if i == 0:
+                    #    selected_ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),
+          #ncol=2, fancybox=True, shadow=True)
+                    #selected_ax.set_title(title)
+                    #selected_ax.set_ylim([-2, 2.5])
+                    #selected_ax.set_yticks(np.arange(-2, 2.5, 1))
+                    #selected_ax.set_ylabel("$[rad/sec]$")
+                    #selected_ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
                     i+=1
 
                     if i >= show_sensors:
