@@ -10,7 +10,7 @@ class PuppyConfigVelocity(PuppyConfig):
         PuppyConfig.__init__(self, args)
 
         #self.set_sensors(['gyr', 'motor_pos'])
-        self.set_sensors(['acc', 'gyr', 'motor_pos'])
+        #self.set_sensors(['acc', 'gyr', 'motor_pos'])
         self.set_sensors(['gyr'])
         self.lag = 9
         self.embedding = 1

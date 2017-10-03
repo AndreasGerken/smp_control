@@ -32,19 +32,17 @@ class PendulumConfig(RobotConfig):
         #self.smoothings = [0.]
         self.smoothing_length = len(self.smoothings)
 
-        #self.use_sensors = ['orient', 'gyr', 'motor_pos']
-        self.use_sensors = None
-        self.numsen = 0
 
-        #self.set_sensors(['poti', 'poti_d', 'poti_integral'])
-        self.set_sensors(['poti','current'])
+        self.set_sensors(['poti', 'poti_d', 'poti_integral'])
+        #self.set_sensors(['poti','current'])
         #self.use_sensors = ['orient', 'motor_pos', 'gyr', 'acc']
+        self.numsen *= self.smoothing_length
 
         #self.numsen = np.sum([sensor_dimensions[sensor] for sensor in self.use_sensors])
         self.nummot = 1
         self.lag = 10
         self.embedding = 1
-        self.output_gain = 250
+        self.output_gain = 150
 
         self.learning_enabled = True
         self.use_sensors_for_model = True
@@ -55,7 +53,7 @@ class PendulumConfig(RobotConfig):
         self.msg_motors = Float32MultiArray()
 
         self.motor_torque_command = np.zeros((self.nummot))
-        self.sensor_vec = np.zeros((self.numsen))
+        self.sensor_vec = np.zeros((self.numsen * self.smoothing_length))
         self.imu_msg = None
         self.poti_old = None
         self.poti_integral = 0
@@ -121,9 +119,11 @@ class PendulumConfig(RobotConfig):
 
         old_sensor_vec = self.sensor_vec
         real_numsen = self.numsen / self.smoothing_length
-
+        print real_numsen
         # bring them data in an array
         new_sensor_vec = np.hstack(sensor_tupel)
+
+
         for i in range(self.smoothing_length):
             s = real_numsen * i
             e = real_numsen * (i + 1)

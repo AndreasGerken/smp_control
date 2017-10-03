@@ -47,7 +47,7 @@ class PuppyConfigStepSweep(PuppyConfig):
                 print "numtimesteps does not fit the cycle length or the repeat steps. To fix it it should be %d" % (steps_max * self.repeat_step * cycle_length)
 
             sweep_angle_total = 2. - self.step_size
-            angle_per_step = sweep_angle_total / steps_max
+            angle_per_step = sweep_angle_total / (steps_max -1)
 
             # write the whole sequence
             for i in range(self.smp_control.numtimesteps):
@@ -58,6 +58,7 @@ class PuppyConfigStepSweep(PuppyConfig):
 
                 if position_in_cycle > self.reset_length:
                     # high position
+
                     angular_command = angle_per_step * step_number + self.step_size - 1.
                 else:
                     # low position

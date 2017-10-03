@@ -56,6 +56,7 @@ class SMP_control(smp_thread_ros):
 
         pub_names = {
             '/lpzros/xsi': [Float32MultiArray, ],
+            '/sensorPrediction': [Float32MultiArray, ],
             '/lpzros/EE': [Float32, ],
         }
         sub_names = {}
@@ -128,6 +129,7 @@ class SMP_control(smp_thread_ros):
         self.pickle_folder = 'pickles'
 
         self.msg_xsi = Float32MultiArray()
+        self.msg_sensor_prediction = Float32MultiArray()
 
     def run(self):
         """ Main loop of the algorithms, runs until the maximum timesteps are
@@ -276,6 +278,10 @@ class SMP_control(smp_thread_ros):
 
         self.msg_xsi.data = self.xsi.flatten().tolist()
         self.pub['_lpzros_xsi'].publish(self.msg_xsi)
+
+
+        self.msg_sensor_prediction.data = self.x_pred.flatten().tolist()
+        self.pub['_sensorPrediction'].publish(self.msg_sensor_prediction)
 
         if(self.verbose):
             print "\n"

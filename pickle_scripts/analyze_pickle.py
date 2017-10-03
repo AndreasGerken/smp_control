@@ -5,15 +5,20 @@ import argparse
 import sys
 import os
 import numpy as np
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from matplotlib.ticker import FuncFormatter
+
 from sklearn import datasets, linear_model
 from sklearn import kernel_ridge
 from sklearn.mixture import GaussianMixture as GMM
-from igmm_cond import IGMM_COND
 from sklearn.neural_network import MLPRegressor
+
 from scipy import signal
+
+from igmm_cond import IGMM_COND
 
 pickleFolder = '../pickles_new_body/'
 #pickleFolder = '../goodPickles/'
@@ -137,10 +142,11 @@ class Analyzer():
         for sensor in self.use_sensors:
             # repeat the sensor name with an identifier as often as the sensor has dimensions
             for sensor_dimension in range(self.sensor_dimensions[sensor]):
+                name = self.sensor_name_long[sensor]
                 if sensor in self.sensor_name_extensions:
-                    name = sensor + " " + self.sensor_name_extensions[sensor][sensor_dimension]
+                    name += " " + self.sensor_name_extensions[sensor][sensor_dimension]
                 else:
-                    name = sensor + " " + str(sensor_dimension)
+                    name += " " + str(sensor_dimension)
                 sensor_names.extend([name])
             #sensor_names.extend([sensor + " "+ str(j)
             #                     for j in range(self.sensor_dimensions[sensor])])
@@ -210,7 +216,7 @@ class Analyzer():
         self.sensor_value_variance_ham = self._pointwise_hamming_variance(self.sensor_values)
         self.sensor_prediction_variance_ham = self._pointwise_hamming_variance(self.sensor_prediction)
         self.sensor_prediction_error_variance_ham = self._pointwise_hamming_variance(self.sensor_prediction_error - np.mean(self.sensor_prediction_error, axis = 0))
-
+        self.sensor_prediction_error_variance_ham += np.ones_like(self.sensor_prediction_error_variance_ham) * 0.001
     """ ANALYZING FUNCTIONS """
 
     def details(self):
@@ -310,6 +316,8 @@ class Analyzer():
         self._save_image(f, 'img/time_series_motor_sensors.png')
         plt.show()
 
+
+
     def hist(self):
         parser = argparse.ArgumentParser()
         parser.add_argument("-s", "--source", type=str, help="[m = motor, s= sensor]", default = "m")
@@ -320,10 +328,54 @@ class Analyzer():
         else:
             source = self.sensor_values
 
-        f = plt.figure()
-        plt.hist(source, label=["M1", "M2", "M3", "M4"], bins= 10)
-        plt.ylabel=""
-        plt.legend()
+        count_negative = 0
+        count_positive = 0
+
+        for source_step in source:
+            for source_step_chanel in source_step:
+                if source_step_chanel > 0.95:
+                    count_positive += 1
+                if source_step_chanel < -0.95:
+                    count_negative += 1
+
+
+        print "negative: ", 1.0 * count_negative / (self.numtimesteps * self.nummot)
+        print "positive: ", 1.0 * count_positive / (self.numtimesteps * self.nummot)
+
+        f = plt.figure(figsize = (20,14))
+
+        params = {'legend.fontsize': 22,
+          'figure.figsize': (20, 14),
+         'axes.labelsize':22,
+         'axes.titlesize':26,
+         'xtick.labelsize':22,
+         'ytick.labelsize':22}
+
+        plt.rcParams.update(params)
+        plt.hist(source, label=["right hind", "left hind", "right front", "left front"], bins= 10)
+
+        def to_percent(y, position):
+            # from https://matplotlib.org/examples/pylab_examples/histogram_percent_demo.html
+            # Ignore the passed in position. This has the effect of scaling the default
+            # tick locations.
+            s = str(np.floor(1000 * y / 6000.) / 10.)
+
+            # The percent symbol needs escaping in latex
+            if mpl.rcParams['text.usetex'] is True:
+                return s + r'$\%$'
+            else:
+                return s + '%'
+
+        # Create the formatter using the function to_percent. This multiplies all the
+        # default labels by 100, making them all percentages
+        formatter = FuncFormatter(to_percent)
+
+        # Set the formatter
+        plt.gca().yaxis.set_major_formatter(formatter)
+
+        plt.ylabel("fraction of motor commands")
+        plt.xlabel("set position")
+        plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.00), ncol=2, fancybox=True, shadow=True, prop={'size':18})
         self._save_image(f, 'img/hist.png')
         plt.show()
 
@@ -375,12 +427,12 @@ class Analyzer():
         if args.plotMseNorm:
             num_subplots += 1
 
-        params = {'legend.fontsize': 'large',
-          'figure.figsize': (20, 10),
-         'axes.labelsize': 'large',
-         'axes.titlesize':'large',
-         'xtick.labelsize':'large',
-         'ytick.labelsize':'large'}
+        params = {'legend.fontsize': 22,
+          'figure.figsize': (20, 30),
+         'axes.labelsize':22,
+         'axes.titlesize':26,
+         'xtick.labelsize':22,
+         'ytick.labelsize':22}
         plt.rcParams.update(params)
         f, axarr = plt.subplots(num_subplots, sharex=True)
 
@@ -409,8 +461,8 @@ class Analyzer():
                     pred = self.sensor_prediction[:-self.lag,i]
                     selected_ax = axarr[cnt_subplot + i]
                     # normal plot
-                    selected_ax.plot(self.sensor_values[:-self.lag,i], label="measurement")
-                    selected_ax.plot(pred, label="prediction")
+                    selected_ax.plot(self.sensor_values[:-self.lag,i], label="measurement", color='b')
+                    selected_ax.plot(pred, label="prediction", color='r')
 
                     # cut between bias and motor pred
                     if hasattr(self, 'x_pred_coefficients') and args.plotSensorsCut:
@@ -424,19 +476,16 @@ class Analyzer():
                         selected_ax.plot(motor_pred, label="motor_prediction")
                         selected_ax.plot(bias_pred , label="bias")
 
-                    # title
-                    #print self.sensor_name_long[sensor_name]
-                    #print self.sensor_name_extensions[sensor_name]
                     #title = self.sensor_name_long[sensor_name] + " " + self.sensor_name_extensions[sensor_name][dim]
 
                     #if i == 0:
-                    #    selected_ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.05),
-          #ncol=2, fancybox=True, shadow=True)
+                    #    selected_ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.00), ncol=2, fancybox=True, shadow=True, prop={'size':18})
                     #selected_ax.set_title(title)
-                    #selected_ax.set_ylim([-2, 2.5])
+                    #selected_ax.set_ylim([-2, 2])
                     #selected_ax.set_yticks(np.arange(-2, 2.5, 1))
                     #selected_ax.set_ylabel("$[rad/sec]$")
                     #selected_ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
+
                     i+=1
 
                     if i >= show_sensors:
@@ -454,18 +503,20 @@ class Analyzer():
             axarr[cnt_subplot].plot(x, self.sensor_prediction_error_variance_ham)
             axarr[cnt_subplot].plot(x, np.mean(self.sensor_prediction_error_variance_ham, axis = 1), color='k', linewidth = 2, linestyle="--")
             axarr[cnt_subplot].grid(linestyle='--', linewidth=1, alpha = 0.2)
-            axarr[cnt_subplot].set_title("Squared error through sliding window")
-            axarr[cnt_subplot].legend(["x", "y", "z", "average"], loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
-            axarr[cnt_subplot].set_ylim([0,0.19])
-            axarr[cnt_subplot].set_yticks(np.arange(0,0.19, 0.04))
+            axarr[cnt_subplot].set_title("Squared prediction error through sliding window $e_{window}$")
+            axarr[cnt_subplot].legend(["x", "y", "z", "average"], loc='upper center', bbox_to_anchor=(0.5, 1.00), ncol=4, fancybox=True, shadow=True, prop={'size': 18})
+            axarr[cnt_subplot].set_ylim([0,0.15])
+            axarr[cnt_subplot].set_yticks(np.arange(0,0.16, 0.05))
             cnt_subplot += 1
 
         if args.plotVar:
             #axarr[cnt_subplot].plot(x, stddev)
             axarr[cnt_subplot].plot(x, self.sensor_value_variance_ham)
-            axarr[cnt_subplot].set_title("Variance")
-
-            selected_ax.legend()
+            axarr[cnt_subplot].plot(x, np.mean(self.sensor_value_variance_ham, axis = 1), color='k', linewidth = 2, linestyle="--")
+            axarr[cnt_subplot].set_title("Variance through sliding window $d_{window}$")
+            axarr[cnt_subplot].set_yticks(np.arange(0,0.61, 0.2))
+            axarr[cnt_subplot].grid(linestyle='--', linewidth=1, alpha = 0.2)
+            axarr[cnt_subplot].legend()
             cnt_subplot += 1
 
         if args.plotMseNorm:
@@ -474,14 +525,14 @@ class Analyzer():
             #for i in range(self.numsen):
                 #pe_norm[:,i] /= np.mean(self.sensor_value_variance_ham, axis = 1)
 
-            axarr[cnt_subplot].plot(x, pe_norm)
-            axarr[cnt_subplot].plot(x, np.mean(pe_norm, axis = 1), color='k', linewidth = 2, linestyle="--")
+            axarr[cnt_subplot].plot(x, np.clip(pe_norm,0,1))
+            axarr[cnt_subplot].plot(x, np.clip(np.mean(pe_norm, axis = 1),0,1), color='k', linewidth = 2, linestyle="--")
             axarr[cnt_subplot].grid(linestyle='--', linewidth=1, alpha = 0.2)
-            axarr[cnt_subplot].set_title("Normalized squared error through sliding window")
+            axarr[cnt_subplot].set_title("Normalized squared prediction error through sliding window $e_{norm}$")
             #axarr[cnt_subplot].legend(["x", "y", "z", "average"], loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
-            axarr[cnt_subplot].set_yticks(np.arange(0,1.6, 0.3))
-            plt.annotate('local minimum', xy=(2150, 0.6), xytext=(2150, 1.2), arrowprops=dict(facecolor='black', shrink=0.05), fontsize='large')
-            plt.annotate('global minimum', xy=(5520, 0.40), xytext=(5300, 1.0), arrowprops=dict(facecolor='black', shrink=0.05), fontsize='large')
+            axarr[cnt_subplot].set_yticks(np.arange(0,1.6, 0.5))
+            plt.annotate('local minimum', xy=(2150, 0.6), xytext=(2150, 1.2), arrowprops=dict(facecolor='black', shrink=0.05), fontsize=18)
+            plt.annotate('episode minimum', xy=(5520, 0.40), xytext=(5160, 1.0), arrowprops=dict(facecolor='black', shrink=0.05), fontsize=18)
             cnt_subplot += 1
 
         plt.xlim([args.xlim_start, args.xlim_end])
@@ -517,11 +568,24 @@ class Analyzer():
 
                 motor_estimate[i] = motor_estimate[i - 1].copy() + delta
 
-        f = plt.figure(figsize = (10,5))
-        plt.title('Estimated motor position')
+        f = plt.figure(figsize = (20,7))
+
+        params = {'legend.fontsize': 22,
+          'figure.figsize': (20, 14),
+         'axes.labelsize':22,
+         'axes.titlesize':26,
+         'xtick.labelsize':22,
+         'ytick.labelsize':22}
+        plt.rcParams.update(params)
+
+        plt.title('Estimated actual motor position')
+        labels=["right hind", "left hind", "right front", "left front"]
         for i in range(self.nummot):
-            plt.plot(motor_estimate[:,i], label="M"+str(i) )
-        plt.legend()
+            plt.plot(motor_estimate[:,i], label=labels[i])
+        plt.yticks(np.arange(-1, 1.3, 0.2))
+        plt.xlabel("timesteps")
+        plt.ylabel("motor position")
+        plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.0), ncol=4, fancybox=True, shadow=True, prop={'size': 18})
         self._save_image(f, '/img/time_series_motor_estimate.png')
         plt.show()
 
@@ -691,6 +755,7 @@ class Analyzer():
         plt.show()
 
     def step_sweep(self):
+
         if not 'robot.step_length' in self.variable_dict:
             warnings.warn("this pickle file was not recorded in the step sweep mode")
 
@@ -699,7 +764,7 @@ class Analyzer():
         repeat_step = self.variable_dict['robot.repeat_step']
         step_size = self.variable_dict['robot.step_size']
 
-        cut_response = 50
+        cut_response = 80
 
         cycle_length = step_length + reset_length
         cycle_max = self.numtimesteps / cycle_length
@@ -717,22 +782,30 @@ class Analyzer():
         avg_responses = np.zeros((steps_max, cut_response, x.shape[1]))
         std_responses = np.zeros((steps_max, cut_response, x.shape[1]))
 
-        colors = cm.Greys(np.linspace(0, 1, cycle_max))
-        colors = cm.viridis(np.linspace(0, 1, cycle_max))
-        colors = cm.cool(np.linspace(0, 1, steps_max))
-
-        #mymap = mpl.colors.LinearSegmentedColormap.from_list('mycolors',['blue','red'])
-
+        colormap = cm.autumn
+        colors = colormap(np.linspace(0, 1, steps_max))
+        line_alpha = 0.
+        fill_alpha = 0.2
+        print sweep_angle_total
         # Using contourf to provide my colorbar info, then clearing the figure
         Z = [[0,0],[0,0]]
-        levels = range(-180,int(sweep_angle_total * 90. + steps_max),int(steps_max))
-        CS3 = plt.contourf(Z, levels, cmap=cm.cool)
+        levels = np.round(np.linspace(-70,int((sweep_angle_total - 1.) * 70.),16, endpoint=True))
+        CS3 = plt.contourf(Z, levels, cmap=colormap)
         plt.clf()
+
+        def plot_one_response(ax, x, avg, std, color):
+            y_low = avg - y_std
+            y_high = avg + y_std
+            ax.plot(x,avg, c=color, lw=2)
+            #ax.fill_between(x, y_low, y_high, facecolor=color, lw=0, alpha=fill_alpha)
+
+        # extract the single responses
 
         for i in range(cycle_max):
             responses[i] = x[i * cycle_length + reset_length: i * cycle_length + reset_length + cut_response]
             responses[i] -= np.average(responses[i,:5]) # bring the signal of the first timesteps to the center
 
+        # calculate average and standard deviation
         for i in range(steps_max):
             avg_responses[i] = np.average(responses[i * repeat_step: (i+1) * repeat_step], axis = 0)
             std_responses[i] = np.std(responses[i * repeat_step:(i+1)*repeat_step], axis = 0)
@@ -742,10 +815,6 @@ class Analyzer():
         # plotting
         f, axarr = plt.subplots(3, 2)
 
-        line_alpha = 0.5
-        line_offset = 3.
-
-        line_offset = 0.1
         for i in range(steps_max):
             j = steps_max - i - 1
 
@@ -760,15 +829,15 @@ class Analyzer():
                 x = range(cut_response)
                 y_avg = avg_responses[j,:,dim]
                 y_std = std_responses[j,:,dim]
-                y_offset = y_avg + j * line_offset
+                y_offset = y_avg
                 y_low = y_offset - y_std
                 y_high = y_offset + y_std
                 ax = axarr[dim / 2, dim % 2]
 
                 #ax.plot(x, y_low, c=colors[i], lw=1, alpha=line_alpha, label=text)
                 #ax.plot(x, y_high, c=colors[i], lw=1, alpha=line_alpha, label=text)
-
-                im = ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=line_alpha, label=text)
+                plot_one_response(ax, x, y_avg, y_std, colors[j])
+                #ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=line_alpha, label=text)
                 ax.set_ylabel(self.sensor_names_with_dimensions[dim])
                 ax.set_xlabel("timesteps")
                 #plt.xticks(np.arange(0, cut_response, 1.0))
@@ -780,40 +849,32 @@ class Analyzer():
 
         f.colorbar(CS3)
 
-        # Single plot
+        # acc-y and gyr-x
 
-        f, ax = plt.subplots(1,1, figsize=(20,15))
+        f, ax = plt.subplots(1,2, figsize=(20,7))
         plt.rc('font', family='serif', size=30)
-        line_alpha = 0.
-        fill_alpha = 0.4
-        for i in range(steps_max-2):
-            j = steps_max - i - 3
 
-            if j == 1:
-                text = "180"
-            elif j == steps_max - 1:
-                text = "-180"
-            else:
-                text = None
+        ax_i = 0
+        for dim in [1,3]:
+            for i in range(steps_max):
+                j = steps_max - i - 1
+                selected_ax = ax[ax_i]
 
+                x = range(cut_response)
+                plot_one_response(selected_ax, x,  avg_responses[j,:,dim], std_responses[j,:,dim], colors[j])
 
-            x = range(cut_response)
-            y_avg = np.mean(np.abs(avg_responses[j,:,:]), axis=1)
-            y_std = np.mean(np.abs(std_responses[j,:,:]), axis = 1)
-            print y_avg.shape
-            y_offset = y_avg + j * line_offset
-            y_low = y_offset - y_std
-            y_high = y_offset + y_std
+                selected_ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
+                selected_ax.set_xlabel("$timesteps (10ms)$", fontsize=40)
 
-            ax.plot(x, y_low, c=colors[j], lw=1, alpha=line_alpha)
-            ax.plot(x, y_high, c=colors[j], lw=1, alpha=line_alpha)
+                if dim == 1:
+                    selected_ax.set_ylim(-2.5,2.5)
+                    selected_ax.set_ylabel("$m/s^2$", fontsize=40)
+                if dim == 3:
+                    selected_ax.set_ylim(-0.35,0.35)
+                    selected_ax.set_ylabel("$rad/sec$", fontsize=40)
+                selected_ax.set_title(self.sensor_names_with_dimensions[dim], fontsize=40)
 
-            ax.fill_between(x, y_low, y_high, facecolor=colors[j], lw=1, alpha=fill_alpha, label=text)
-
-            ax.set_ylabel("$m/s^2$", fontsize=40)
-            ax.set_xlabel("$ms$", fontsize=40)
-            ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
-        ax.set_title("acceleration - y", fontsize=40)
+            ax_i += 1
 
         cbar = plt.colorbar(CS3)
         cbar.set_label("angle before step")
