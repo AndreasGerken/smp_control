@@ -54,17 +54,20 @@ class Analyzer():
         self._extract_all_variables()
         self._prepare_sensor_names()
 
-        if 'sensor_prediction' in self.variable_dict:
+        if 'x_pred' in self.variable_dict:
             self._sliding_window_variance()
 
-        params = {'legend.fontsize': 'large',
-          'figure.figsize': (20, 10),
-         'axes.labelsize': 'large',
-         'axes.titlesize':'large',
-         'xtick.labelsize':'large',
-         'ytick.labelsize':'large'}
+        params = {'legend.fontsize': 22,
+          'figure.figsize': (20, 14),
+         'axes.labelsize':22,
+         'axes.titlesize':26,
+         'xtick.labelsize':22,
+         'ytick.labelsize':22}
+
         plt.rcParams.update(params)
 
+        #colors from https://sashat.me/2017/01/11/list-of-20-simple-distinct-colors/
+        self.distinctColors = ['#e6194b','#3cb44b','#0082c8','#ffe119']
 
     """ HELPER FUNCTIONS """
 
@@ -78,6 +81,8 @@ class Analyzer():
         self.lag = self.variable_dict['lag']
         self.motor_commands = self.variable_dict["y"][:self.cut]
         self.sensor_values = self.variable_dict["x"][:self.cut]
+
+        self.numtimesteps = self.cut
 
         self.loop_time = None
         if "loop_time" in self.variable_dict:
@@ -280,14 +285,18 @@ class Analyzer():
 
         f, axarr = plt.subplots(len(self.use_sensors) + 1, 1, figsize=(20,12), sharex=True)
 
+
+
         for motor in range(self.nummot):
-            if args.synchronous_front_back and motor % 2 != 0:
+            if args.synchronous_front_back and motor % 2 == 0:
                 axarr[0].plot(self.motor_commands[:, motor])
         axarr[0].set_ylim([-1.1, 1.1])
         axarr[0].set_title("Motor Commands")
+        axarr[0].set_ylabel("a.u.")
+        axarr[0].grid()
 
         if args.synchronous_front_back:
-            axarr[0].legend(["front", "hind"])
+            axarr[0].legend(["hind legs", "front legs"])
 
         sensor_index = 0
         for sensor in range(len(self.use_sensors)):
@@ -308,11 +317,14 @@ class Analyzer():
                 axarr[sensor + 1].set_ylabel("$" + self.sensor_units[sensor_name] + "$")
                 sensor_index += 1
 
+            axarr[sensor + 1].grid()
             axarr[sensor +1 ].legend()
 
-        axarr[sensor + 1].set_xlabel("timesteps ($10ms$)")
+        axarr[sensor + 1].set_xlabel("timesteps ($10ms$ each)")
+
 
         f.tight_layout()
+
         self._save_image(f, 'img/time_series_motor_sensors.png')
         plt.show()
 
@@ -344,14 +356,6 @@ class Analyzer():
 
         f = plt.figure(figsize = (20,14))
 
-        params = {'legend.fontsize': 22,
-          'figure.figsize': (20, 14),
-         'axes.labelsize':22,
-         'axes.titlesize':26,
-         'xtick.labelsize':22,
-         'ytick.labelsize':22}
-
-        plt.rcParams.update(params)
         plt.hist(source, label=["right hind", "left hind", "right front", "left front"], bins= 10)
 
         def to_percent(y, position):
@@ -388,12 +392,12 @@ class Analyzer():
         parser.add_argument("-filter", "--filter_cutoff", type=float, default = 0.5)
         parser.add_argument("-xs", '--xlim_start', type= int, default = 0)
         parser.add_argument('-xe', '--xlim_end', type=int, default = self.numtimesteps)
-        parser.add_argument('-pMotor', '--plotMotor', type=bool, default = False)
         parser.add_argument('-pSensors', '--plotSensors', type=bool, default = True)
-        parser.add_argument('-pSensorsCut', '--plotSensorsCut', type=bool, default = False)
-        parser.add_argument('-pMse', '--plotMse', type=bool, default = False)
-        parser.add_argument('-pVar', '--plotVar', type=bool, default = False)
-        parser.add_argument('-pMseNorm', '--plotMseNorm', type=bool, default = False)
+        parser.add_argument('-pMotor', '--plotMotor', default = False, action='store_true')
+        parser.add_argument('-pSensorsCut', '--plotSensorsCut', default = False, action='store_true')
+        parser.add_argument('-pMse', '--plotMse', default = False, action='store_true')
+        parser.add_argument('-pVar', '--plotVar', default = False, action='store_true')
+        parser.add_argument('-pMseNorm', '--plotMseNorm', default = False, action='store_true')
         # TODO Make the bool args setable without writing the 1
 
         args, unknown_args = parser.parse_known_args()
@@ -427,8 +431,10 @@ class Analyzer():
         if args.plotMseNorm:
             num_subplots += 1
 
+        subplot_height = 5
+
         params = {'legend.fontsize': 22,
-          'figure.figsize': (20, 30),
+          'figure.figsize': (20, subplot_height * num_subplots),
          'axes.labelsize':22,
          'axes.titlesize':26,
          'xtick.labelsize':22,
@@ -461,8 +467,8 @@ class Analyzer():
                     pred = self.sensor_prediction[:-self.lag,i]
                     selected_ax = axarr[cnt_subplot + i]
                     # normal plot
-                    selected_ax.plot(self.sensor_values[:-self.lag,i], label="measurement", color='b')
-                    selected_ax.plot(pred, label="prediction", color='r')
+                    selected_ax.plot(self.sensor_values[:-self.lag,i], label="measurement")
+                    selected_ax.plot(pred, label="prediction")
 
                     # cut between bias and motor pred
                     if hasattr(self, 'x_pred_coefficients') and args.plotSensorsCut:
@@ -621,14 +627,14 @@ class Analyzer():
         # THIS IS USED AND TESTED FOR EXPERIMENT 2
 
         parser = argparse.ArgumentParser()
-        parser.add_argument("-extended", "--extended", type=bool, default = False)
+
         parser.add_argument("-lag", "--lag", type=int, default = 1)
         args, unknown_args = parser.parse_known_args()
 
         self.sensor_values -= np.mean(self.sensor_values, axis=0)
         self._prepare_data_for_learning()
 
-        if args.extended:
+        if self.args.extended:
             self.trainingData["motor"] = np.zeros_like(self.trainingData["motor"])
             self.testData["motor"] = np.zeros_like(self.testData["motor"])
 
@@ -644,22 +650,44 @@ class Analyzer():
         predTest = regr.predict(self.testData["motor"])
 
 
-        _var = np.std(self.sensor_values, axis=0)
+        _var = np.var(self.testData["sensor"], axis=0)
 
 
-        mse = np.mean((predTest - self.testData["sensor"]) ** 2)
-        mse_var = np.mean(((predTest - self.testData["sensor"])/_var) ** 2)
-        print mse
-        print mse_var
+        mse = np.mean((predTest - self.testData["sensor"]) ** 2, axis=0)
+        mse_var = mse / _var
+
+        print self.trainingData["motor"]
+
+        print "\tacc \t gyr\ttotal"
+        print "mse:\t%.3f\t%.3f\t%.3f" % (np.mean(mse[:3]), np.mean(mse[3:]),np.mean(mse))
+        print "var:\t%.3f\t%.3f\t%.3f" % (np.mean(_var[:3]), np.mean(_var[3:]), np.mean(_var))
+        print "nmse:\t%.3f\t%.3f\t%.3f" % (np.mean(mse_var[:3]), np.mean(mse_var[3:]), np.mean(mse_var))
+
+        print "coeffs"
+        print "{}"
+        for i in range(regr.coef_.shape[1]):
+            print "{",
+            for j in range(regr.coef_.shape[0]):
+                print regr.coef_[j,i],
+                if j != regr.coef_.shape[0] - 1:
+                    print ",",
+            print "}\n"
+
+        print "}"
+
 
         _y_min = np.ceil(np.min(self.testData["sensor"]))
         _y_max = np.floor(np.max(self.testData["sensor"]))
-        _y_ticks = np.arange(_y_min, _y_max + 1, 1)
+        _x_ticks = np.arange(0,predTest.shape[0] + 10, 100)
+        _y_step = np.round((_y_max - _y_min) / 5.)
+        _y_ticks = np.arange(_y_min, _y_max + 1, _y_step)
 
-        f, ax = plt.subplots(3,2, sharey=True, sharex=True, figsize=(20,15))
+        # plotting
 
 
-        plt.rc('font', family='serif', size=30)
+        f, ax = plt.subplots(3,2, sharey=True, sharex=True, figsize=(20,10))
+
+        #plt.rc('font', family='serif', size=30)
 
         for i in range(self.numsen):
             _x = i % 3
@@ -668,11 +696,11 @@ class Analyzer():
             selected_sensor = self.use_sensors[_y]
 
             ax_selected.plot(self.testData["sensor"][:,i], label='sensor measurements')
-            ax_selected.plot(predTest[:,i], label='sensor prediction')
+            ax_selected.plot(predTest[:,i], label='sensor predictions')
 
             ax_selected.grid(linestyle='--', linewidth=1, alpha = 0.2)
             plt.yticks(_y_ticks)
-            plt.xticks(np.arange(0,predTest.shape[0],100))
+            plt.xticks(_x_ticks)
 
             if _y == 0:
                 ax_selected.set_ylabel(['x','y','z'][_x])
@@ -683,7 +711,7 @@ class Analyzer():
                 ax_selected.set_xlabel("timesteps")
 
         # Put a legend below current axis
-        ax[2,0].legend(loc='lower left', bbox_to_anchor=(0, -0.7),
+        ax[2,0].legend(loc='lower left', bbox_to_anchor=(0, -0.6),
           fancybox=True, shadow=True, ncol=2)
 
         f.tight_layout(pad=3, h_pad=0.4, w_pad = 0.3)
@@ -852,7 +880,7 @@ class Analyzer():
         # acc-y and gyr-x
 
         f, ax = plt.subplots(1,2, figsize=(20,7))
-        plt.rc('font', family='serif', size=30)
+        #plt.rc('font', family='serif', size=30)
 
         ax_i = 0
         for dim in [1,3]:
@@ -961,8 +989,9 @@ class Analyzer():
 
         plt.plot(xValues, [0] * len(xValues), 'k', alpha=0.3)
 
-        plt.rc('text', usetex=True)
-        plt.rc('font', family='serif')
+        # TODO: Neccessary?
+        #plt.rc('text', usetex=True)
+        #plt.rc('font', family='serif')
 
         print np.average(allAverageSquaredCorrelations[:, 0])
 
@@ -1177,12 +1206,12 @@ class Analyzer():
         #self.sensor_values -= np.mean(self.sensor_values, axis = 0)
         #self.sensor_values /= np.std(self.sensor_values, axis = 0)
 
-        _xticks = np.linspace(-90,90,5)
+        _xticks = np.linspace(-70,70,5)
         _yticks_acc = np.linspace(-0.9,0.9,4)
         _yticks_gyr = np.linspace(-0.15,0.15,3)
         sensor_means = np.mean(self.sensor_values, axis = 0)
 
-        plt.rc('font', family='serif', size=30)
+        # plt.rc('font', family='serif', size=30)
 
         for i in range(self.numsen):
             _x = i % 3
@@ -1197,14 +1226,14 @@ class Analyzer():
                     #backward moving
                     color = 'b'
 
-                ax_selected.scatter(self.motor_commands[part * j: part * (j + 1),0] * 90., self.sensor_values[part * j: part * (j + 1),i], alpha = 0.05, color=color)
+                ax_selected.scatter(self.motor_commands[part * j: part * (j + 1),0] * 70., self.sensor_values[part * j: part * (j + 1),i], alpha = 0.2, color=color, s = 4, lw = 0)
 
             #fake_scatter for legend
             legend_scatter_forwards = ax_selected.scatter( np.NaN, np.NaN, marker = 'o', color='r', label='forwards' )
             legend_scatter_backwards = ax_selected.scatter( np.NaN, np.NaN, marker = 'o', color='b', label='backwards' )
 
 
-            ax_selected.grid(linestyle='--', linewidth=1, alpha = 0.2)
+            ax_selected.grid(linestyle='--', linewidth=1, alpha = 0.5)
             #plt.yticks(_y_ticks)
             plt.xticks(_xticks)
 
@@ -1218,13 +1247,13 @@ class Analyzer():
 
             if _x == 0:
                 # first row add titles
-                ax_selected.set_title(self.sensor_name_long[selected_sensor] + " in [$" + self.sensor_units[selected_sensor] + "$]", y = 1.08)
+                ax_selected.set_title(self.sensor_name_long[selected_sensor] + " y-axis in [$" + self.sensor_units[selected_sensor] + "$]", y = 1.08)
             if _x == 2:
                 #last row add x units
                 ax_selected.set_xlabel("degrees")
 
         # Put a legend below current axis
-        lgnd = ax[2,0].legend(loc='lower left', bbox_to_anchor=(0, -0.7),
+        lgnd = ax[2,0].legend(loc='lower left', bbox_to_anchor=(0, -0.5),
           fancybox=True, shadow=True, ncol=2)
         lgnd.legendHandles[0]._sizes = [30]
         lgnd.legendHandles[1]._sizes = [30]
@@ -1495,8 +1524,7 @@ if __name__ == "__main__":
                         help="correlation window size", default=100)
     parser.add_argument("-es", "--embsize", type=int,
                         help="history time steps for learning", default=1)
-    parser.add_argument("-extended", "--extended", type=int,
-                        help="toggle extended model", default=1)
+    parser.add_argument("-extended", "--extended", action="store_true")
     parser.add_argument("-cut", "--cut", type=int, help="Cut of the graph after 'cut' timesteps.", default=0)
     args, unknown_args = parser.parse_known_args()
 
