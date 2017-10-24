@@ -10,6 +10,8 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from matplotlib import cm
 from matplotlib.ticker import FuncFormatter
+import matplotlib.gridspec as gridspec
+from matplotlib.colors import Normalize
 
 from sklearn import datasets, linear_model
 from sklearn import kernel_ridge
@@ -288,7 +290,7 @@ class Analyzer():
 
 
         for motor in range(self.nummot):
-            if args.synchronous_front_back and motor % 2 == 0:
+            if not args.synchronous_front_back or motor % 2 == 0:
                 axarr[0].plot(self.motor_commands[:, motor])
         axarr[0].set_ylim([-1.1, 1.1])
         axarr[0].set_title("Motor Commands")
@@ -297,6 +299,9 @@ class Analyzer():
 
         if args.synchronous_front_back:
             axarr[0].legend(["hind legs", "front legs"])
+        else:
+            labels=["right hind", "left hind", "right front", "left front"]
+            axarr[0].legend(labels)
 
         sensor_index = 0
         for sensor in range(len(self.use_sensors)):
@@ -323,9 +328,9 @@ class Analyzer():
         axarr[sensor + 1].set_xlabel("timesteps ($10ms$ each)")
 
 
-        f.tight_layout()
+        #f.tight_layout()
 
-        self._save_image(f, 'img/time_series_motor_sensors.png')
+        self._save_image(f, 'img/time_series_motor_sensors.png', tight=True)
         plt.show()
 
 
@@ -362,7 +367,7 @@ class Analyzer():
             # from https://matplotlib.org/examples/pylab_examples/histogram_percent_demo.html
             # Ignore the passed in position. This has the effect of scaling the default
             # tick locations.
-            s = str(np.floor(1000 * y / 6000.) / 10.)
+            s = str(np.floor(1000 * y / self.numtimesteps) / 10.)
 
             # The percent symbol needs escaping in latex
             if mpl.rcParams['text.usetex'] is True:
@@ -378,7 +383,7 @@ class Analyzer():
         plt.gca().yaxis.set_major_formatter(formatter)
 
         plt.ylabel("fraction of motor commands")
-        plt.xlabel("set position")
+        plt.xlabel("Motor Commands")
         plt.legend(loc='upper center', bbox_to_anchor=(0.5, 1.00), ncol=2, fancybox=True, shadow=True, prop={'size':18})
         self._save_image(f, 'img/hist.png')
         plt.show()
@@ -398,7 +403,9 @@ class Analyzer():
         parser.add_argument('-pMse', '--plotMse', default = False, action='store_true')
         parser.add_argument('-pVar', '--plotVar', default = False, action='store_true')
         parser.add_argument('-pMseNorm', '--plotMseNorm', default = False, action='store_true')
-        # TODO Make the bool args setable without writing the 1
+        parser.add_argument('-yLim','--y_ticks_limit', default = 2, type=int, help='upper and lower limits of the sensor plots')
+        parser.add_argument('-yStep', '--y_ticks_step', default = 1, type=int, help='stepsize in y ticks for the sensor plots')
+        parser.add_argument('-xStep', '--x_ticks_step', default = 500, type=int, help='stepsize in x ticks for all plots')
 
         args, unknown_args = parser.parse_known_args()
 
@@ -451,6 +458,7 @@ class Analyzer():
                 axarr[cnt_subplot].set_ylim([-1.1, 1.1])
                 axarr[cnt_subplot].legend()
             axarr[cnt_subplot].set_title("Motor Commands")
+            axarr[cnt_subplot].set_ylabel("a.u")
 
             # increment the subplot counter
             cnt_subplot+=1
@@ -482,15 +490,15 @@ class Analyzer():
                         selected_ax.plot(motor_pred, label="motor_prediction")
                         selected_ax.plot(bias_pred , label="bias")
 
-                    #title = self.sensor_name_long[sensor_name] + " " + self.sensor_name_extensions[sensor_name][dim]
+                    title = self.sensor_name_long[sensor_name] + " " + self.sensor_name_extensions[sensor_name][dim]
 
-                    #if i == 0:
-                    #    selected_ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.00), ncol=2, fancybox=True, shadow=True, prop={'size':18})
-                    #selected_ax.set_title(title)
-                    #selected_ax.set_ylim([-2, 2])
-                    #selected_ax.set_yticks(np.arange(-2, 2.5, 1))
-                    #selected_ax.set_ylabel("$[rad/sec]$")
-                    #selected_ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
+                    if i == 0:
+                        selected_ax.legend(loc='upper center', bbox_to_anchor=(0.5, 1.00), ncol=2, fancybox=True, shadow=True, prop={'size':18})
+                    selected_ax.set_title(title)
+                    selected_ax.set_ylim([-1 * args.y_ticks_limit, args.y_ticks_limit])
+                    selected_ax.set_yticks(np.arange(-1 * args.y_ticks_limit, 1 * args.y_ticks_limit + 0.1, args.y_ticks_step))
+                    selected_ax.set_ylabel("$[rad/sec]$")
+                    selected_ax.grid(linestyle='--', linewidth=1, alpha = 0.2)
 
                     i+=1
 
@@ -513,6 +521,7 @@ class Analyzer():
             axarr[cnt_subplot].legend(["x", "y", "z", "average"], loc='upper center', bbox_to_anchor=(0.5, 1.00), ncol=4, fancybox=True, shadow=True, prop={'size': 18})
             axarr[cnt_subplot].set_ylim([0,0.15])
             axarr[cnt_subplot].set_yticks(np.arange(0,0.16, 0.05))
+            axarr[cnt_subplot].set_ylabel('a.u')
             cnt_subplot += 1
 
         if args.plotVar:
@@ -523,6 +532,7 @@ class Analyzer():
             axarr[cnt_subplot].set_yticks(np.arange(0,0.61, 0.2))
             axarr[cnt_subplot].grid(linestyle='--', linewidth=1, alpha = 0.2)
             axarr[cnt_subplot].legend()
+            axarr[cnt_subplot].set_ylabel('a.u')
             cnt_subplot += 1
 
         if args.plotMseNorm:
@@ -537,13 +547,24 @@ class Analyzer():
             axarr[cnt_subplot].set_title("Normalized squared prediction error through sliding window $e_{norm}$")
             #axarr[cnt_subplot].legend(["x", "y", "z", "average"], loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
             axarr[cnt_subplot].set_yticks(np.arange(0,1.6, 0.5))
-            plt.annotate('local minimum', xy=(2150, 0.6), xytext=(2150, 1.2), arrowprops=dict(facecolor='black', shrink=0.05), fontsize=18)
-            plt.annotate('episode minimum', xy=(5520, 0.40), xytext=(5160, 1.0), arrowprops=dict(facecolor='black', shrink=0.05), fontsize=18)
+            axarr[cnt_subplot].set_ylabel('a.u')
+
+            print self.filename
+
+            # plot arrows of the minima in the episodes
+            if self.filename == "pickles/homeokinesis/experiment_extended_model_1.pickle":
+                plt.annotate('local minimum', xy=(2150, 0.6), xytext=(2150, 1.2), arrowprops=dict(facecolor='black', shrink=0.05), fontsize=18)
+                plt.annotate('episode minimum', xy=(5520, 0.40), xytext=(5160, 1.0), arrowprops=dict(facecolor='black', shrink=0.05), fontsize=18)
+            elif self.filename == "pickles/homeokinesis_gyr_velocity/experiment_1.pickle":
+                plt.annotate('local minimum', xy=(18800, 0.3), xytext=(18800, 1.2), arrowprops=dict(facecolor='black', shrink=0.05), fontsize=18)
+                plt.annotate('episode minimum', xy=(28400, 0.20), xytext=(26000, 1.1), arrowprops=dict(facecolor='black', shrink=0.05), fontsize=18)
+
             cnt_subplot += 1
 
         plt.xlim([args.xlim_start, args.xlim_end])
-        plt.xticks(np.arange(args.xlim_start, args.xlim_end + 1, 500))
-        plt.xlabel("timesteps")
+
+        plt.xticks(np.arange(args.xlim_start, args.xlim_end + 1, args.x_ticks_step))
+        plt.xlabel("timesteps (10ms each)")
 
         plt.legend()
         f.tight_layout()
@@ -557,8 +578,11 @@ class Analyzer():
 
     def time_series_motor_estimate(self):
         max_turning_speed_deg = 60 * 0.01 / 0.17
-        max_turning_speed_our_scale = max_turning_speed_deg * 2. / 180.
+        max_turning_speed_our_scale = max_turning_speed_deg * 2. / 140.
+        max_turning_speed_filter = 0.4
         motor_estimate = np.zeros_like(self.motor_commands)
+
+        turning_speed = np.zeros_like(self.nummot)
 
         print max_turning_speed_our_scale
         for i in range(self.numtimesteps):
@@ -572,7 +596,9 @@ class Analyzer():
                     if np.abs(delta[j]) > max_turning_speed_our_scale:
                         delta[j] = np.sign(delta[j]) * max_turning_speed_our_scale
 
-                motor_estimate[i] = motor_estimate[i - 1].copy() + delta
+                turning_speed = turning_speed * (1. - max_turning_speed_filter) + delta * max_turning_speed_filter
+
+                motor_estimate[i] = motor_estimate[i - 1].copy() + turning_speed
 
         f = plt.figure(figsize = (20,7))
 
@@ -620,6 +646,17 @@ class Analyzer():
         plt.show()
 
     def learn_motor_sensor_linear(self):
+        class MidpointNormalize(Normalize):
+            def __init__(self, vmin=None, vmax=None, midpoint=None, clip=False):
+                self.midpoint = midpoint
+                Normalize.__init__(self, vmin, vmax, clip)
+
+            def __call__(self, value, clip=None):
+                # I'm ignoring masked values and all kinds of edge cases to make a
+                # simple example...
+                x, y = [self.vmin, self.midpoint, self.vmax], [0, 0.5, 1]
+                return np.ma.masked_array(np.interp(value, x, y))
+
         """
         This mode learns the sensor responses from the motor commands with
         linear regression and tests the result.
@@ -635,8 +672,8 @@ class Analyzer():
         self._prepare_data_for_learning()
 
         if self.args.extended:
-            self.trainingData["motor"] = np.zeros_like(self.trainingData["motor"])
-            self.testData["motor"] = np.zeros_like(self.testData["motor"])
+            #self.trainingData["motor"] = np.zeros_like(self.trainingData["motor"])
+            #self.testData["motor"] = np.zeros_like(self.testData["motor"])
 
             self.trainingData["motor"] = np.hstack((self.trainingData["motor"][:-args.lag], self.trainingData["sensor"][args.lag:]))
             self.testData["motor"] = np.hstack((self.testData["motor"][:-args.lag], self.testData["sensor"][args.lag:]))
@@ -650,18 +687,46 @@ class Analyzer():
         predTest = regr.predict(self.testData["motor"])
 
 
-        _var = np.var(self.testData["sensor"], axis=0)
-
+        _var = np.var(self.sensor_values, axis=0)
 
         mse = np.mean((predTest - self.testData["sensor"]) ** 2, axis=0)
         mse_var = mse / _var
 
-        print self.trainingData["motor"]
+        #print np.mean(self.testData["motor"][:-args.lag], axis = 0)
+
+        #print np.mean(self.trainingData["motor"], axis = 0)
+        #print np.mean(self.testData["motor"], axis = 0)
 
         print "\tacc \t gyr\ttotal"
         print "mse:\t%.3f\t%.3f\t%.3f" % (np.mean(mse[:3]), np.mean(mse[3:]),np.mean(mse))
         print "var:\t%.3f\t%.3f\t%.3f" % (np.mean(_var[:3]), np.mean(_var[3:]), np.mean(_var))
         print "nmse:\t%.3f\t%.3f\t%.3f" % (np.mean(mse_var[:3]), np.mean(mse_var[3:]), np.mean(mse_var))
+
+        gs = gridspec.GridSpec(1,2, width_ratios=[3.2,6])
+        f = plt.figure(figsize = (20,10))
+        ax1 = plt.subplot(gs[0])
+        ax2 = plt.subplot(gs[1])
+
+        coef = regr.coef_
+
+
+        # normalize
+        #coef =  (coef.T / np.sum(np.abs(coef), axis=1)).T
+        #print np.sum(coef, axis=1)
+
+        orig_cmap = mpl.cm.seismic
+        #norm = MidpointNormalize(midpoint=0)
+
+        max_abs_coef = np.max(np.abs(coef))
+
+        ax1.imshow(coef[:,:4], vmin = -1  * max_abs_coef, vmax = max_abs_coef, cmap=orig_cmap)
+        ax1.set_title("Coefficients of matrix A")
+
+        cbar = ax2.imshow(coef[:,4:], vmin = -1 * max_abs_coef, vmax = max_abs_coef, cmap = orig_cmap)
+        ax2.set_title("Coefficients of matrix S")
+        plt.colorbar(cbar)
+
+        self._save_image(f, 'img/linear_coeffs.png', tight=True)
 
         print "coeffs"
         print "{}"
@@ -753,7 +818,10 @@ class Analyzer():
         else:
             show_sensors = args.show_dimensions
         i = 0
-        f, axarr = plt.subplots(show_sensors + 1, figsize=(20,10))
+
+        subplot_height = 3
+
+        f, axarr = plt.subplots(show_sensors, figsize=(20,subplot_height * self.numsen))
 
 
         #print self.x_pred_coefficients[:-self.lag, :, 0]
@@ -764,13 +832,14 @@ class Analyzer():
                 pred = testDataSampled[:-self.lag,i]
 
                 # normal plot
-                axarr[i + 1].plot(testDataAll[:-self.lag, i + self.nummot], label="sensor measurement")
-                axarr[i + 1].plot(testDataSampled[:-self.lag, i + self.nummot], label="prediction")
+                axarr[i].plot(testDataAll[:-self.lag, i + self.nummot], label="sensor measurements")
+                axarr[i].plot(testDataSampled[:-self.lag, i + self.nummot], label="predictions")
 
                 # title
                 title = self.sensor_names_with_dimensions[i]
 
-                axarr[i + 1].set_title(title)
+                axarr[i].set_title(title)
+                axarr[i].grid()
                 i+=1
 
                 if i >= show_sensors:
@@ -778,8 +847,9 @@ class Analyzer():
             if i >= show_sensors:
                 break
         plt.legend()
-        f.tight_layout()
-        self._save_image(f, 'img/igmm_pred.png')
+
+        plt.tight_layout()
+        self._save_image(f, 'img/igmm_pred.png', tight=True)
         plt.show()
 
     def step_sweep(self):
