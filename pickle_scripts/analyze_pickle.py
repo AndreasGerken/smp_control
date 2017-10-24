@@ -787,7 +787,6 @@ class Analyzer():
 
 
     def learn_motor_sensor_igmm(self):
-        # TODO: USE FOR EXPERIMENT
         parser = argparse.ArgumentParser()
         parser.add_argument("-dimensions", "--show_dimensions", type=int, default = 0)
         args, unknown_args = parser.parse_known_args()
@@ -819,9 +818,9 @@ class Analyzer():
             show_sensors = args.show_dimensions
         i = 0
 
-        subplot_height = 3
+        subplot_height = 2.5
 
-        f, axarr = plt.subplots(show_sensors, figsize=(20,subplot_height * self.numsen))
+        f, axarr = plt.subplots(show_sensors, figsize=(20,subplot_height * self.numsen), sharex=True)
 
 
         #print self.x_pred_coefficients[:-self.lag, :, 0]
@@ -840,13 +839,36 @@ class Analyzer():
 
                 axarr[i].set_title(title)
                 axarr[i].grid()
+
+                axarr[i].set_ylabel("$" + self.sensor_units[sensor_name] + "$")
                 i+=1
 
                 if i >= show_sensors:
+                    axarr[i -1].set_xlabel("timesteps (10ms each)")
                     break
             if i >= show_sensors:
+                axarr[i -1].set_xlabel("timesteps (10ms each)")
                 break
         plt.legend()
+
+        _var = np.var(self.sensor_values, axis=0)
+
+        mse = np.mean((testDataSampled[:,self.nummot:] - testDataAll[:,self.nummot:]) ** 2, axis=0)
+        mse_var = mse / _var
+
+        #print np.mean(self.testData["motor"][:-args.lag], axis = 0)
+
+        #print np.mean(self.trainingData["motor"], axis = 0)
+        #print np.mean(self.testData["motor"], axis = 0)
+
+        print "\tacc \t gyr\ttotal"
+        print "mse:\t%.3f\t%.3f\t%.3f" % (np.mean(mse[:3]), np.mean(mse[3:]),np.mean(mse))
+        print "var:\t%.3f\t%.3f\t%.3f" % (np.mean(_var[:3]), np.mean(_var[3:]), np.mean(_var))
+        print "nmse:\t%.3f\t%.3f\t%.3f" % (np.mean(mse_var[:3]), np.mean(mse_var[3:]), np.mean(mse_var))
+
+        print mse
+        print _var
+        print mse_var
 
         plt.tight_layout()
         self._save_image(f, 'img/igmm_pred.png', tight=True)
