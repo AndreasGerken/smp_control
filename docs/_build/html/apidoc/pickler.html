@@ -59,8 +59,11 @@
 <span id="pickler-module"></span><h1>pickler module<a class="headerlink" href="#module-pickler" title="Permalink to this headline">¶</a></h1>
 <dl class="class">
 <dt id="pickler.Pickler">
-<em class="property">class </em><code class="descclassname">pickler.</code><code class="descname">Pickler</code><span class="sig-paren">(</span><em>source_instance</em>, <em>numtimesteps</em><span class="sig-paren">)</span><a class="headerlink" href="#pickler.Pickler" title="Permalink to this definition">¶</a></dt>
-<dd><dl class="method">
+<em class="property">class </em><code class="descclassname">pickler.</code><code class="descname">Pickler</code><span class="sig-paren">(</span><em>source_instance</em>, <em>numtimesteps=None</em><span class="sig-paren">)</span><a class="headerlink" href="#pickler.Pickler" title="Permalink to this definition">¶</a></dt>
+<dd><p>This class takes an instance of another class and logs states of the class variables.
+The variable names can be added with add_once_variables and the function save_pickle extracts those variables from the instance.
+If variables should be logged multiple times, numtimesteps has to be set to the number of expected measurements and the variables have to be added with add_frequent_variables.</p>
+<dl class="method">
 <dt id="pickler.Pickler.add_frequent_variables">
 <code class="descname">add_frequent_variables</code><span class="sig-paren">(</span><em>variable_names</em><span class="sig-paren">)</span><a class="headerlink" href="#pickler.Pickler.add_frequent_variables" title="Permalink to this definition">¶</a></dt>
 <dd><p>This function adds a variable which will be saved at every timestep.</p>
@@ -82,7 +85,7 @@ timestep.</p>
 
 <dl class="method">
 <dt id="pickler.Pickler.save_pickle">
-<code class="descname">save_pickle</code><span class="sig-paren">(</span><em>pickle_file_name</em><span class="sig-paren">)</span><a class="headerlink" href="#pickler.Pickler.save_pickle" title="Permalink to this definition">¶</a></dt>
+<code class="descname">save_pickle</code><span class="sig-paren">(</span><em>pickle_file_name</em>, <em>verbose=True</em><span class="sig-paren">)</span><a class="headerlink" href="#pickler.Pickler.save_pickle" title="Permalink to this definition">¶</a></dt>
 <dd><p>This function collects the data from the instance and from the buffer
 and saves them to a pickle file. The saved variable is a dictionary.</p>
 </dd></dl>

@@ -23,11 +23,3 @@ Indices and tables
 * :ref:`genindex`
 * :ref:`modindex`
 * :ref:`search`
-
-Testchapter
-===========
-
-Whatsup world?
-
-* Testy
-* Besty

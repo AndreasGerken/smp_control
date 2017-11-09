@@ -4,10 +4,10 @@
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>90</x>
-      <y>410</y>
+      <x>520</x>
+      <y>310</y>
       <w>310</w>
-      <h>360</h>
+      <h>370</h>
     </coordinates>
     <panel_attributes>/*RobotConfig*/
 --
@@ -31,6 +31,7 @@
 *methods:*
 /+ get_input()/
 /+ send_output(algorithm_output)/
++ set_sensors(use_sensors)
 + check_properties()
 </panel_attributes>
     <additional_attributes/>
@@ -38,8 +39,8 @@
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>90</x>
-      <y>160</y>
+      <x>520</x>
+      <y>70</y>
       <w>310</w>
       <h>210</h>
     </coordinates>
@@ -62,26 +63,26 @@
   <element>
     <id>Relation</id>
     <coordinates>
-      <x>130</x>
-      <y>360</y>
+      <x>560</x>
+      <y>270</y>
       <w>30</w>
-      <h>70</h>
+      <h>60</h>
     </coordinates>
     <panel_attributes>lt=&lt;&lt;-</panel_attributes>
-    <additional_attributes>10.0;10.0;10.0;50.0</additional_attributes>
+    <additional_attributes>10.0;10.0;10.0;40.0</additional_attributes>
   </element>
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>470</x>
-      <y>290</y>
+      <x>910</x>
+      <y>420</y>
       <w>310</w>
       <h>270</h>
     </coordinates>
     <panel_attributes>*SMP_control*
 --
 *responsibilities:*
-- run the learning algorith
+- run the learning algorithm
 - trigger the interface to the robot configuration
 --
 *variables:*
@@ -103,24 +104,24 @@
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>470</x>
-      <y>600</y>
+      <x>910</x>
+      <y>730</y>
       <w>310</w>
-      <h>110</h>
+      <h>120</h>
     </coordinates>
     <panel_attributes>*smp_base::smp_thread_ros*
 --
 *responsibilities:*
 - provide threading
-- connect to ROS including subscring
+- connect to ROS including subscribing
   and advertising threads</panel_attributes>
     <additional_attributes/>
   </element>
   <element>
     <id>Relation</id>
     <coordinates>
-      <x>520</x>
-      <y>550</y>
+      <x>960</x>
+      <y>680</y>
       <w>30</w>
       <h>70</h>
     </coordinates>
@@ -130,21 +131,21 @@
   <element>
     <id>Relation</id>
     <coordinates>
-      <x>390</x>
-      <y>510</y>
-      <w>100</w>
+      <x>820</x>
+      <y>460</y>
+      <w>110</w>
       <h>40</h>
     </coordinates>
     <panel_attributes>lt=-
 m1=1
 m2=1</panel_attributes>
-    <additional_attributes>10.0;10.0;80.0;10.0</additional_attributes>
+    <additional_attributes>10.0;10.0;90.0;10.0</additional_attributes>
   </element>
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>830</x>
-      <y>160</y>
+      <x>910</x>
+      <y>70</y>
       <w>310</w>
       <h>270</h>
     </coordinates>
@@ -171,35 +172,36 @@ m2=1</panel_attributes>
   <element>
     <id>Relation</id>
     <coordinates>
-      <x>520</x>
-      <y>220</y>
-      <w>330</w>
-      <h>90</h>
+      <x>990</x>
+      <y>330</y>
+      <w>30</w>
+      <h>110</h>
     </coordinates>
     <panel_attributes>lt=-
 m1=1
 m2=1</panel_attributes>
-    <additional_attributes>310.0;10.0;10.0;10.0;10.0;70.0</additional_attributes>
+    <additional_attributes>10.0;10.0;10.0;90.0</additional_attributes>
   </element>
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>830</x>
-      <y>600</y>
-      <w>290</w>
-      <h>60</h>
+      <x>520</x>
+      <y>710</y>
+      <w>310</w>
+      <h>70</h>
     </coordinates>
     <panel_attributes>lt=.
-*ROS*
+*rosserial*
 --
-serial_node</panel_attributes>
+*responsibilities:*
+- connect to the robot</panel_attributes>
     <additional_attributes/>
   </element>
   <element>
     <id>UMLClass</id>
     <coordinates>
-      <x>830</x>
-      <y>710</y>
+      <x>520</x>
+      <y>820</y>
       <w>290</w>
       <h>30</h>
     </coordinates>
@@ -210,26 +212,26 @@ serial_node</panel_attributes>
   <element>
     <id>Relation</id>
     <coordinates>
-      <x>880</x>
-      <y>650</y>
-      <w>60</w>
-      <h>80</h>
+      <x>570</x>
+      <y>770</y>
+      <w>70</w>
+      <h>70</h>
     </coordinates>
     <panel_attributes>lt=&lt;.&gt;
 serial
 </panel_attributes>
-    <additional_attributes>10.0;60.0;10.0;10.0</additional_attributes>
+    <additional_attributes>10.0;50.0;10.0;10.0</additional_attributes>
   </element>
   <element>
     <id>Relation</id>
     <coordinates>
-      <x>770</x>
-      <y>610</y>
-      <w>80</w>
+      <x>820</x>
+      <y>740</y>
+      <w>110</w>
       <h>40</h>
     </coordinates>
     <panel_attributes>lt=&lt;.&gt;
-</panel_attributes>
-    <additional_attributes>60.0;20.0;10.0;20.0</additional_attributes>
+ROS</panel_attributes>
+    <additional_attributes>90.0;20.0;10.0;20.0</additional_attributes>
   </element>
 </diagram>
